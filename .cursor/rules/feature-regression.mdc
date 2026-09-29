@@ -1,0 +1,69 @@
+---
+description: Before changing Tangents, preserve every existing feature in the code areas you touch. Features are grouped by where they live, including ones that are only on a branch.
+alwaysApply: true
+---
+
+# Do not regress existing features
+
+At the start of a task, name the files you will change and the areas below that own them. Before you finish, every feature in those areas must still behave as written here. A feature on another branch counts: if your checkout is missing it and you are editing its files, bring that behavior forward unless the user told you to remove it. Switching to `main` is not a reason to replace a newer behavior with the older one.
+
+When you add, change, or remove a feature, update this rule in the same change: area, files, the behavior that must keep working, and the branch if it is not on `main`.
+
+Check the area you touched, not the whole app. Backend areas: run `uv run pytest` from `backend/`. UI areas: exercise the interaction.
+
+## Conversation list
+
+Files: `frontend/src/App.tsx`, `frontend/src/api.ts`, conversation routes in `backend/app/main.py`, conversation helpers in `backend/app/db.py`.
+
+- The header control lists chats newest first. Choosing a row opens that chat.
+- Each row has Delete. Confirm with the goal snippet, or "New conversation". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
+- `DELETE /api/conversations/{id}` returns 204, or 404. Threads and messages point at each other, so null `fork_message_id`, `parent_thread_id`, and `parent_id` before deleting messages, threads, then the conversation.
+- New conversation creates an empty center node titled "Center".
+
+## Turns, fork, and context
+
+Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/app/main.py`, `frontend/src/ChatPane.tsx`, `frontend/src/Message.tsx`, `frontend/src/SelectionPopover.tsx`.
+
+- Context for a turn is only the `parent_id` walk to the root. The center node never receives side-node tokens. A side node does not see messages added to its parent after the fork. Sibling forks do not see each other.
+- A side node can be forked only from an assistant message. Its first message's `parent_id` is that fork message.
+- A failed turn deletes the user message it just saved and does not keep a goal or title from that turn.
+- Stored message content is raw Anthropic blocks and is not edited. The only message delete is that failed-turn rollback, plus deleting a whole conversation.
+- Every assistant message has Fork. A text selection offers Fork from this (quote in the composer) and Explain this (quote plus "Explain this." sent immediately).
+- Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). That behavior is on branch `sticky-fork-button` and is not on `main`. `frontend/src/Message.test.tsx` covers it.
+
+## Tree and node titles
+
+Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/app/db.py`, `_name_first_turn` in `backend/app/main.py`, `frontend/src/TreeView.tsx`, `frontend/src/Breadcrumb.tsx`.
+
+- After a node's first reply succeeds, its title is a 2–6 word name from Claude Haiku 4.5, using the first 400 characters of that node's first user message. The assistant reply is not sent. A failed, empty, or cut-off title call uses the first 40 characters. Later messages do not rename the node. Introduced on `haiku-node-titles`.
+- Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
+- A side node shows the breadcrumb from center and Back to center.
+
+## Pinned goal
+
+Files: `frontend/src/PinnedGoal.tsx`, `update_goal` in `backend/app/db.py`, `PATCH /api/conversations/{id}`.
+
+- The goal starts as the center node's first user message, and only while `goal` is still null. Editing it does not change the transcript. Later messages do not overwrite an edited goal.
+- It stays at the top of every node, truncated to two lines, expandable. Enter or blur saves; Esc cancels.
+
+## Merge back
+
+Files: `frontend/src/MergeBack.tsx`, summary and merge routes in `backend/app/main.py`.
+
+- Summary is one call, returns `{summary}`, and saves nothing. Merge back is never automatic. Confirming appends a user note `From side node: ...` to the parent tip only, with `is_note` set. The center node cannot merge.
+
+## Streaming, cache, and compaction
+
+Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDivider.tsx`, `frontend/src/UsageFooter.tsx`.
+
+- A chat turn streams `user_message`, `delta`, `compaction`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
+- Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: last block of the inherited path, and last block of the new user message.
+- Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button. Merge-back calls do not compact.
+- `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
+
+## Model and theme
+
+Files: `frontend/src/models.ts`, `frontend/src/theme.ts`, the header in `frontend/src/App.tsx`.
+
+- The header picker chooses the model for that turn and remembers it in the browser. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5.
+- Dark mode follows the system until toggled; the choice is stored in `localStorage`.
