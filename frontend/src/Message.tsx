@@ -49,14 +49,14 @@ export function MessageView({
         )}
         {text && <Markdown text={text} />}
       </div>
+      {message.role === "assistant" && message.usage && <UsageFooter usage={message.usage} />}
       {message.role === "assistant" && (
-        <div className="mt-1 flex items-start justify-between gap-3">
-          {message.usage ? <UsageFooter usage={message.usage} /> : <span />}
+        <div className="pointer-events-none contents">
           <button
             type="button"
             disabled={forkDisabled}
             onClick={() => onFork(message.id)}
-            className="shrink-0 rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-ink disabled:opacity-40"
+            className="pointer-events-auto sticky bottom-3 z-10 mt-1 ml-auto block w-fit rounded-md border border-line bg-paper px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-ink disabled:opacity-40"
           >
             Fork
           </button>
