@@ -3,7 +3,18 @@ import copy
 import pytest
 
 from app.config import load_settings, model_supports_compaction
-from app.llm import compaction_instructions, history_has_compaction, to_api_messages
+from app.db import short_title
+from app.llm import (
+    TITLE_INPUT_CHARS,
+    TITLE_INSTRUCTION,
+    TITLE_MAX_CHARS,
+    TITLE_MAX_TOKENS,
+    TITLE_MODEL,
+    compaction_instructions,
+    history_has_compaction,
+    suggest_title,
+    to_api_messages,
+)
 
 
 def message(role, text, id="m"):
@@ -108,6 +119,95 @@ def test_model_support_list_includes_current_5_5_models():
     assert model_supports_compaction("claude-sonnet-5")
     assert model_supports_compaction("claude-opus-5")
     assert not model_supports_compaction("claude-haiku-4-5")
+
+
+class _Block:
+    def __init__(self, text: str):
+        self.text = text
+
+    def model_dump(self, exclude_none=True):
+        return {"type": "text", "text": self.text}
+
+
+class _Messages:
+    def __init__(self, text: str = "", error: Exception | None = None):
+        self.text = text
+        self.error = error
+        self.kwargs = None
+
+    def create(self, **kwargs):
+        self.kwargs = kwargs
+        if self.error is not None:
+            raise self.error
+        return type("Response", (), {"content": [_Block(self.text)]})()
+
+
+class _Client:
+    def __init__(self, messages: _Messages):
+        self.messages = messages
+
+
+def test_suggest_title_sends_a_short_haiku_prompt(monkeypatch):
+    messages = _Messages(text='"Onboarding email rewrite"')
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    opening = "Please  \n rewrite the onboarding email. " + ("detail " * 80)
+    assert suggest_title(opening) == "Onboarding email rewrite"
+    prompt = messages.kwargs["messages"][0]["content"]
+    excerpt = " ".join(opening.split())[:TITLE_INPUT_CHARS].rstrip()
+    assert messages.kwargs["model"] == TITLE_MODEL
+    assert messages.kwargs["max_tokens"] == TITLE_MAX_TOKENS
+    assert "stop_sequences" not in messages.kwargs
+    assert "system" not in messages.kwargs
+    assert prompt == f"{TITLE_INSTRUCTION}\n\n{excerpt}"
+    assert len(excerpt) <= TITLE_INPUT_CHARS
+    assert "detail detail" in excerpt
+
+
+def test_suggest_title_strips_a_markdown_heading(monkeypatch):
+    messages = _Messages(text="# Acetone Smell in Sourdough Starter")
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    assert suggest_title("why does it smell") == "Acetone Smell in Sourdough Starter"
+
+
+def test_suggest_title_rejects_a_cut_off_reply(monkeypatch):
+    class _Cut:
+        stop_reason = "max_tokens"
+        content = [_Block("Hamdi Ulukaya: Chobani Founder and")]
+
+    class _CuttingMessages(_Messages):
+        def create(self, **kwargs):
+            self.kwargs = kwargs
+            return _Cut()
+
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(_CuttingMessages()))
+    opening = "tell me about hamdi ulukaya"
+    assert suggest_title(opening) == short_title(opening)
+
+
+def test_suggest_title_caps_a_long_reply(monkeypatch):
+    messages = _Messages(text="a" * 80)
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    assert suggest_title("hello") == "a" * TITLE_MAX_CHARS
+
+
+def test_suggest_title_falls_back_when_the_call_fails_or_is_empty(monkeypatch):
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    failed = _Messages(error=RuntimeError("down"))
+    monkeypatch.setattr("app.llm._client", lambda: _Client(failed))
+    opening = "Please help me rewrite the onboarding email for new hires today"
+    assert suggest_title(opening) == short_title(opening)
+
+    empty = _Messages(text="  \n  ")
+    monkeypatch.setattr("app.llm._client", lambda: _Client(empty))
+    assert suggest_title(opening) == short_title(opening)
+
+    quoted_blank = _Messages(text='"   "')
+    monkeypatch.setattr("app.llm._client", lambda: _Client(quoted_blank))
+    assert suggest_title(opening) == short_title(opening)
 
 
 def test_cache_ttl_must_be_5m_or_1h(monkeypatch):

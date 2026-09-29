@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
@@ -13,10 +13,33 @@ import {
 } from "@xyflow/react";
 import type { Thread } from "./types";
 
-const NODE_W = 200;
 const NODE_H = 72;
 const GAP_X = 36;
 const GAP_Y = 64;
+// Horizontal padding (px-3), the border, and a few pixels so subpixel rounding cannot clip the last letter.
+const CARD_CHROME = 12 * 2 + 2 + 6;
+const TITLE_FONT = '500 14px "Source Sans 3", ui-sans-serif, system-ui, sans-serif';
+const KIND_FONT = '400 10px "Source Sans 3", ui-sans-serif, system-ui, sans-serif';
+
+let measureCanvas: HTMLCanvasElement | null = null;
+
+function labelWidth(text: string, font: string, trackingPx = 0): number {
+  if (typeof document === "undefined" || text.length === 0) return text.length * 8;
+  measureCanvas ??= document.createElement("canvas");
+  const context = measureCanvas.getContext("2d");
+  if (!context) return text.length * 8;
+  context.font = font;
+  const width = context.measureText(text).width;
+  const tracking = text.length > 1 ? trackingPx * (text.length - 1) : 0;
+  return width + tracking;
+}
+
+function cardWidth(title: string, kind: string): number {
+  const titleWidth = labelWidth(title, TITLE_FONT);
+  // The kind line is uppercase with tracking-wide (0.025em at 10px).
+  const kindWidth = labelWidth(kind.toUpperCase(), KIND_FONT, 0.25);
+  return Math.ceil(Math.max(titleWidth, kindWidth) + CARD_CHROME);
+}
 
 type ThreadNodeData = {
   title: string;
@@ -41,15 +64,22 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
   const root = threads.find((thread) => thread.parent_thread_id === null);
   if (!root) return { nodes: [], edges: [] };
 
+  const cards = new Map<string, number>();
+  for (const thread of threads) {
+    const kind = thread.parent_thread_id ? "Side node" : "Center";
+    cards.set(thread.id, cardWidth(thread.title, kind));
+  }
+
   const widths = new Map<string, number>();
   function measure(id: string): number {
+    const own = cards.get(id) ?? cardWidth("", "Center");
     const kids = childrenOf(threads, id);
     if (kids.length === 0) {
-      widths.set(id, NODE_W);
-      return NODE_W;
+      widths.set(id, own);
+      return own;
     }
     const total = kids.reduce((sum, kid, index) => sum + measure(kid.id) + (index ? GAP_X : 0), 0);
-    const width = Math.max(NODE_W, total);
+    const width = Math.max(own, total);
     widths.set(id, width);
     return width;
   }
@@ -60,15 +90,16 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
 
   function place(thread: Thread, left: number, top: number) {
     const kids = childrenOf(threads, thread.id);
-    const subtree = widths.get(thread.id) ?? NODE_W;
+    const subtree = widths.get(thread.id) ?? cards.get(thread.id) ?? 0;
+    const card = cards.get(thread.id) ?? subtree;
     nodes.push({
       id: thread.id,
       type: "thread",
-      position: { x: left + subtree / 2 - NODE_W / 2, y: top },
+      position: { x: left + subtree / 2 - card / 2, y: top },
       draggable: false,
       connectable: false,
       className: "hover:!z-50",
-      style: { width: NODE_W, overflow: "visible" },
+      style: { width: card, overflow: "visible" },
       data: {
         title: thread.title,
         kind: thread.parent_thread_id ? "Side node" : "Center",
@@ -78,7 +109,7 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
         isCenter: thread.parent_thread_id === null,
       },
     });
-    const kidsWidth = kids.reduce((sum, kid, index) => sum + (widths.get(kid.id) ?? NODE_W) + (index ? GAP_X : 0), 0);
+    const kidsWidth = kids.reduce((sum, kid, index) => sum + (widths.get(kid.id) ?? 0) + (index ? GAP_X : 0), 0);
     let cursor = left + (subtree - kidsWidth) / 2;
     for (const kid of kids) {
       edges.push({
@@ -88,7 +119,7 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
         type: "smoothstep",
       });
       place(kid, cursor, top + NODE_H + GAP_Y);
-      cursor += (widths.get(kid.id) ?? NODE_W) + GAP_X;
+      cursor += (widths.get(kid.id) ?? 0) + GAP_X;
     }
   }
 
@@ -107,8 +138,8 @@ function ThreadNode({ data }: NodeProps<Node<ThreadNodeData>>) {
       {!data.isCenter && (
         <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-accent" />
       )}
-      <div className="text-[10px] uppercase tracking-wide text-muted">{data.kind}</div>
-      <div className="truncate text-sm font-medium">{data.title}</div>
+      <div className="whitespace-nowrap text-[10px] uppercase tracking-wide text-muted">{data.kind}</div>
+      <div className="whitespace-nowrap text-sm font-medium">{data.title}</div>
       {data.forkSnippet && (
         <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[200px] rounded-md border border-line bg-panel p-2 text-xs leading-snug text-muted shadow-lg group-hover:block">
           {data.forkSnippet}
@@ -137,14 +168,27 @@ function Canvas({
   colorMode: "light" | "dark";
 }) {
   const { fitView } = useReactFlow();
-  const graph = useMemo(() => layout(threads, activeThreadId), [threads, activeThreadId]);
+  const [fontsReady, setFontsReady] = useState(() => document.fonts?.status === "loaded");
+  const graph = useMemo(() => layout(threads, activeThreadId), [threads, activeThreadId, fontsReady]);
+
+  useEffect(() => {
+    const ready = document.fonts?.ready;
+    if (!ready) return;
+    let active = true;
+    void ready.then(() => {
+      if (active) setFontsReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       void fitView({ padding: 0.25, maxZoom: 1, duration: 200 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [threads, fitView]);
+  }, [graph, fitView]);
 
   return (
     <ReactFlow

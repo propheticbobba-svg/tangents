@@ -33,12 +33,14 @@ from app.db import (
     messages_in_conversation,
     next_parent_id,
     note_user_message,
+    rename_thread,
+    short_title,
     thread_view,
     tree,
     undo_user_message,
     update_goal,
 )
-from app.llm import LLMError, stream_chat, summarize_side_node
+from app.llm import LLMError, stream_chat, suggest_title, summarize_side_node
 
 logger = logging.getLogger("tangents")
 if not logger.handlers:
@@ -169,6 +171,21 @@ def _fail_turn(conn, thread_id: str, message_id: str, undo: dict) -> None:
     undo_user_message(conn, thread_id, undo)
 
 
+def _name_first_turn(conn, thread_id: str, content: str, undo: dict) -> None:
+    """Name the node after its first successful reply. A title failure keeps the turn."""
+    if not undo.get("first_turn"):
+        return
+    try:
+        title = (suggest_title(content) or "").strip() or short_title(content)
+        rename_thread(conn, thread_id, title)
+    except Exception:
+        logger.exception("could not name the node")
+        try:
+            rename_thread(conn, thread_id, short_title(content))
+        except Exception:
+            logger.exception("could not store the fallback title")
+
+
 def _chat_events(thread_id: str, content: str, model: str | None) -> Iterator[str]:
     conn = connect()
     message_id: str | None = None
@@ -225,6 +242,7 @@ def _chat_events(thread_id: str, content: str, model: str | None) -> Iterator[st
                 usage=done["usage"],
             )
             message_id = None
+            _name_first_turn(conn, thread_id, content, undo)
             yield _sse("done", assistant)
         except LLMError as exc:
             _fail_turn(conn, thread_id, message_id, undo)

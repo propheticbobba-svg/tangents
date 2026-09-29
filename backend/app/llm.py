@@ -24,14 +24,24 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import Iterator
 from typing import Any
 
 import anthropic
 
 from app.config import KEY_MISSING, MODEL_MISSING, get_settings, model_supports_compaction
+from app.db import short_title
 
 COMPACTION_BETA = "compact-2026-01-12"
+TITLE_MODEL = "claude-haiku-4-5"
+TITLE_INPUT_CHARS = 400
+TITLE_MAX_CHARS = 60
+TITLE_MAX_TOKENS = 32
+TITLE_INSTRUCTION = "Reply with only a 2-6 word title. One line. No quotes, no markdown."
+_TITLE_QUOTES = "\"'`“”‘’"
+
+logger = logging.getLogger("tangents")
 
 
 class LLMError(Exception):
@@ -228,3 +238,69 @@ def summarize_side_node(path: list[dict], model: str | None = None) -> str:
     if not summary:
         raise LLMError("The summary came back empty")
     return summary
+
+
+def title_excerpt(text: str) -> str:
+    """Whitespace-collapsed prefix sent to the title model."""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= TITLE_INPUT_CHARS:
+        return collapsed
+    return collapsed[:TITLE_INPUT_CHARS].rstrip()
+
+
+def sanitize_title(raw: str) -> str:
+    """One line, quotes removed, capped so a long reply cannot become the name."""
+    line = raw.split("\n", 1)[0]
+    collapsed = " ".join(line.split()).strip()
+    if len(collapsed) >= 2 and collapsed[0] in _TITLE_QUOTES and collapsed[-1] in _TITLE_QUOTES:
+        collapsed = collapsed[1:-1].strip()
+    collapsed = collapsed.lstrip("#").strip()
+    if len(collapsed) > TITLE_MAX_CHARS:
+        collapsed = collapsed[:TITLE_MAX_CHARS].rstrip()
+    return collapsed
+
+
+def suggest_title(user_text: str) -> str:
+    """A short node name from the first user message.
+
+    Uses Haiku on a truncated slice. A failed or empty call falls back to
+    short_title so the chat turn still gets a name.
+    """
+    try:
+        raw = _fetch_title(user_text)
+    except LLMError as exc:
+        logger.warning("title call failed: %s", exc)
+        return short_title(user_text)
+    title = sanitize_title(raw)
+    if not title:
+        logger.warning("title call returned nothing usable")
+        return short_title(user_text)
+    return title
+
+
+def _fetch_title(user_text: str) -> str:
+    require_config()
+    prompt = f"{TITLE_INSTRUCTION}\n\n{title_excerpt(user_text)}"
+    try:
+        # A newline stop is rejected: each stop sequence must contain non-whitespace.
+        # max_tokens only guards a runaway reply. A reply that hits the cap is
+        # unfinished, so it is discarded instead of saved as a partial title.
+        response = _client().messages.create(
+            model=TITLE_MODEL,
+            max_tokens=TITLE_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except LLMError:
+        raise
+    except Exception as exc:
+        raise LLMError(str(exc)) from exc
+
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise LLMError("title was cut off")
+
+    parts = []
+    for block in response.content:
+        dumped = _dump_block(block)
+        if dumped.get("type") == "text" and dumped.get("text"):
+            parts.append(dumped["text"])
+    return "\n".join(parts).strip()

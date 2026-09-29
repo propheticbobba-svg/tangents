@@ -96,7 +96,7 @@ Within a thread, messages form a line. A new message's `parent_id` is the thread
 
 The pinned goal defaults to the text of the center node's first user message, and only while `goal` is still NULL. Editing it does not change the transcript. Compaction summaries are instructed to restate the current goal.
 
-Thread titles are the first 40 characters of that thread's first user message. No extra model call is made for titles.
+After a node's first reply succeeds, its title is a 2–6 word name from Claude Haiku 4.5 (`claude-haiku-4-5`), taken from the first 400 characters of that node's first user message. The assistant reply is not sent. If that call fails or comes back empty, the title is the first 40 characters of the message. Later messages do not rename the node.
 
 Stored messages are not edited or deleted, except the user message of a turn that fails before an assistant reply is saved.
 
