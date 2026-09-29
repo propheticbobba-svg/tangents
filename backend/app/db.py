@@ -393,9 +393,11 @@ def tree(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any] | Non
 
 
 def note_user_message(conn: sqlite3.Connection, thread: dict[str, Any], text: str) -> dict[str, Any]:
-    """Title the thread from its first user message, and seed the goal on the center node.
+    """Seed the goal from the center node's first user message.
 
-    Returns undo info so a failed turn can put the title and goal back.
+    A first turn is marked so the caller can name the node after a successful
+    reply. Returns undo info so a failed turn can clear that goal. The title
+    stays the placeholder until that reply is saved.
     """
     undo: dict[str, Any] = {}
     count = conn.execute(
@@ -404,8 +406,7 @@ def note_user_message(conn: sqlite3.Connection, thread: dict[str, Any], text: st
     ).fetchone()["n"]
     if count != 1:
         return undo
-    undo["title"] = thread["title"]
-    rename_thread(conn, thread["id"], short_title(text))
+    undo["first_turn"] = True
     if thread["parent_thread_id"] is None:
         conversation = get_conversation(conn, thread["conversation_id"])
         if conversation is not None and conversation["goal"] is None:

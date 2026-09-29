@@ -9,7 +9,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import connect, insert_message
+from app.db import connect, insert_message, short_title
+from app.llm import LLMError
 
 
 def walk(messages, message_id):
@@ -55,6 +56,10 @@ def parse_sse(body: str):
                 data = line.split(":", 1)[1].strip()
         events.append((event, json.loads(data)))
     return events
+
+
+def haiku_title(text: str) -> str:
+    return f"Named: {text}"
 
 
 def create_conversation(client: TestClient) -> tuple[str, str]:
@@ -138,6 +143,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
 
 def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
     def fake_stream(path, goal, model=None):
@@ -176,13 +182,14 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
 
     messages = client.get(f"/api/threads/{center_id}/messages").json()
     assert [message["role"] for message in messages["messages"]] == ["user", "assistant"]
-    assert messages["thread"]["title"] == "Pin this goal"
+    assert messages["thread"]["title"] == "Named: Pin this goal"
     tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
     assert tree["goal"] == "Pin this goal"
 
 
 def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
     def fake_stream(path, goal, model=None):
         text = "answer " + path[-1]["content"][0]["text"]
@@ -232,8 +239,50 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     assert forks[0]["fork_position"] == forks[1]["fork_position"] == 1
     assert "answer Main topic" in forks[0]["fork_snippet"]
     titles = {side_a["thread"]["title"], side_b["thread"]["title"]}
-    assert titles == {"Tangent A", "Tangent B"}
-    assert [item["title"] for item in side_a["ancestry"]] == ["Main topic", "Tangent A"]
+    assert titles == {"Named: Tangent A", "Named: Tangent B"}
+    assert [item["title"] for item in side_a["ancestry"]] == ["Named: Main topic", "Named: Tangent A"]
+
+
+def test_title_falls_back_and_a_later_turn_keeps_it(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr(
+        "app.main.stream_chat",
+        lambda path, goal, model=None: iter(
+            [
+                {
+                    "type": "done",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ]
+        ),
+    )
+    calls: list[str] = []
+
+    def titles(text: str) -> str:
+        calls.append(text)
+        if text.startswith("Empty"):
+            return "   "
+        raise LLMError("title model down")
+
+    monkeypatch.setattr("app.main.suggest_title", titles)
+    _conversation_id, center_id = create_conversation(client)
+    empty = "Empty reply from the title model should not stick as the name"
+    client.post(f"/api/threads/{center_id}/messages", json={"content": empty})
+    assert client.get(f"/api/threads/{center_id}/messages").json()["thread"]["title"] == short_title(empty)
+
+    _other_id, other_center = create_conversation(client)
+    opening = "Please help me rewrite the onboarding email for new hires today"
+    client.post(f"/api/threads/{other_center}/messages", json={"content": opening})
+    titled = client.get(f"/api/threads/{other_center}/messages").json()
+    assert titled["thread"]["title"] == short_title(opening)
+    client.post(
+        f"/api/threads/{other_center}/messages",
+        json={"content": "Make the subject line shorter"},
+    )
+    again = client.get(f"/api/threads/{other_center}/messages").json()
+    assert again["thread"]["title"] == short_title(opening)
+    assert calls == [empty, opening]
 
 
 def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, monkeypatch):
