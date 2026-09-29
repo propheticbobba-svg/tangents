@@ -1,0 +1,334 @@
+"""API behavior that does not call Anthropic.
+
+Chat success paths can use a test double for get_context. The real walk is
+covered in test_context.py.
+"""
+
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.db import connect, insert_message
+
+
+def walk(messages, message_id):
+    """Test double. Not the application implementation."""
+    by_id = {message["id"]: message for message in messages}
+    path = []
+    seen = set()
+    current = by_id[message_id]
+    while current is not None:
+        if current["id"] in seen:
+            raise AssertionError("cycle")
+        seen.add(current["id"])
+        path.append(current)
+        parent_id = current["parent_id"]
+        current = by_id[parent_id] if parent_id else None
+    path.reverse()
+    return path
+
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("TANGENTS_DB", str(tmp_path / "tangents.db"))
+    # Empty values block backend/.env from filling these in during tests.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "")
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def parse_sse(body: str):
+    events = []
+    for block in body.split("\n\n"):
+        if not block.strip():
+            continue
+        event = "message"
+        data = ""
+        for line in block.split("\n"):
+            if line.startswith("event:"):
+                event = line.split(":", 1)[1].strip()
+            elif line.startswith("data:"):
+                data = line.split(":", 1)[1].strip()
+        events.append((event, json.loads(data)))
+    return events
+
+
+def create_conversation(client: TestClient) -> tuple[str, str]:
+    response = client.post("/api/conversations")
+    assert response.status_code == 201
+    payload = response.json()
+    return payload["id"], payload["center_thread_id"]
+
+
+def test_new_conversation_has_an_empty_center_node(client: TestClient):
+    conversation_id, center_id = create_conversation(client)
+    listed = client.get("/api/conversations")
+    assert listed.status_code == 200
+    assert listed.json()[0]["id"] == conversation_id
+    assert listed.json()[0]["goal"] is None
+
+    tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
+    assert tree["goal"] is None
+    assert len(tree["threads"]) == 1
+    assert tree["threads"][0]["id"] == center_id
+    assert tree["threads"][0]["parent_thread_id"] is None
+    assert tree["threads"][0]["title"] == "Center"
+
+    messages = client.get(f"/api/threads/{center_id}/messages").json()
+    assert messages["messages"] == []
+    assert messages["ancestry"] == [{"id": center_id, "title": "Center"}]
+
+
+def test_failed_turn_rolls_back_the_user_message(client: TestClient):
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello"},
+    )
+    assert response.status_code == 200
+    events = parse_sse(response.text)
+    assert events[0][0] == "user_message"
+    assert events[1] == ("error", {"error": "ANTHROPIC_API_KEY is not set in backend/.env"})
+
+    messages = client.get(f"/api/threads/{center_id}/messages").json()
+    assert messages["messages"] == []
+    assert messages["thread"]["title"] == "Center"
+    conversation = client.get("/api/conversations").json()[0]
+    assert conversation["goal"] is None
+
+
+def test_missing_api_key_is_a_clear_error_once_context_exists(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello"},
+    )
+    events = parse_sse(response.text)
+    assert events[-1][0] == "error"
+    assert events[-1][1]["error"] == "ANTHROPIC_API_KEY is not set in backend/.env"
+    assert client.get(f"/api/threads/{center_id}/messages").json()["messages"] == []
+
+
+def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+
+    def fake_stream(path, goal, model=None):
+        seen["model"] = model
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello", "model": "claude-opus-5-5"},
+    )
+    assert parse_sse(response.text)[-1][0] == "done"
+    assert seen["model"] == "claude-opus-5-5"
+
+
+def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+
+    def fake_stream(path, goal, model=None):
+        seen["ids"] = [message["id"] for message in path]
+        seen["goal"] = goal
+        seen["blocks"] = path[-1]["content"]
+        yield {"type": "delta", "text": "Hello "}
+        yield {"type": "delta", "text": "there"}
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": "Hello there"}],
+            "usage": {
+                "input_tokens": 11,
+                "output_tokens": 2,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 4,
+            },
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Pin this goal"},
+    )
+    events = parse_sse(response.text)
+    assert [event for event, _data in events] == ["user_message", "delta", "delta", "done"]
+    done = events[-1][1]
+    assert done["role"] == "assistant"
+    assert done["content"] == [{"type": "text", "text": "Hello there"}]
+    assert done["usage"]["cache_creation_input_tokens"] == 4
+    assert done["parent_id"] == events[0][1]["id"]
+    assert events[0][1]["parent_id"] is None
+    assert seen["blocks"] == [{"type": "text", "text": "Pin this goal"}]
+    assert seen["goal"] == "Pin this goal"
+
+    messages = client.get(f"/api/threads/{center_id}/messages").json()
+    assert [message["role"] for message in messages["messages"]] == ["user", "assistant"]
+    assert messages["thread"]["title"] == "Pin this goal"
+    tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
+    assert tree["goal"] == "Pin this goal"
+
+
+def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+
+    def fake_stream(path, goal, model=None):
+        text = "answer " + path[-1]["content"][0]["text"]
+        yield {"type": "delta", "text": text}
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": text}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    conversation_id, center_id = create_conversation(client)
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "Main topic"})
+    center = client.get(f"/api/threads/{center_id}/messages").json()
+    assistant_id = center["messages"][1]["id"]
+
+    user_fork = client.post("/api/threads", json={"fork_message_id": center["messages"][0]["id"]})
+    assert user_fork.status_code == 400
+
+    first = client.post("/api/threads", json={"fork_message_id": assistant_id})
+    second = client.post("/api/threads", json={"fork_message_id": assistant_id})
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["parent_thread_id"] == center_id
+    assert first.json()["fork_message_id"] == assistant_id
+
+    client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Center continues after the fork"},
+    )
+    client.post(f"/api/threads/{first.json()['id']}/messages", json={"content": "Tangent A"})
+    client.post(f"/api/threads/{second.json()['id']}/messages", json={"content": "Tangent B"})
+
+    side_a = client.get(f"/api/threads/{first.json()['id']}/messages").json()
+    side_b = client.get(f"/api/threads/{second.json()['id']}/messages").json()
+    assert side_a["messages"][0]["parent_id"] == assistant_id
+    assert side_b["messages"][0]["parent_id"] == assistant_id
+    assert "Tangent B" not in json.dumps(side_a["messages"])
+    assert "Tangent A" not in json.dumps(side_b["messages"])
+    center_after = client.get(f"/api/threads/{center_id}/messages").json()
+    assert "Tangent A" not in json.dumps(center_after["messages"])
+    assert "Center continues after the fork" in json.dumps(center_after["messages"])
+
+    tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
+    forks = [thread for thread in tree["threads"] if thread["fork_message_id"] == assistant_id]
+    assert len(forks) == 2
+    assert forks[0]["fork_position"] == forks[1]["fork_position"] == 1
+    assert "answer Main topic" in forks[0]["fork_snippet"]
+    titles = {side_a["thread"]["title"], side_b["thread"]["title"]}
+    assert titles == {"Tangent A", "Tangent B"}
+    assert [item["title"] for item in side_a["ancestry"]] == ["Main topic", "Tangent A"]
+
+
+def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr(
+        "app.main.stream_chat",
+        lambda path, goal, model=None: iter(
+            [
+                {
+                    "type": "done",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ]
+        ),
+    )
+    conversation_id, center_id = create_conversation(client)
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "Original goal"})
+    patched = client.patch(
+        f"/api/conversations/{conversation_id}",
+        json={"goal": "Edited goal"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["goal"] == "Edited goal"
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "A later turn"})
+    tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
+    assert tree["goal"] == "Edited goal"
+
+
+def test_merge_appends_a_labeled_note_to_the_parent_only(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr(
+        "app.main.stream_chat",
+        lambda path, goal, model=None: iter(
+            [
+                {
+                    "type": "done",
+                    "content": [{"type": "text", "text": "assistant"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ]
+        ),
+    )
+    _conversation_id, center_id = create_conversation(client)
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "Main"})
+    assistant_id = client.get(f"/api/threads/{center_id}/messages").json()["messages"][1]["id"]
+    side = client.post("/api/threads", json={"fork_message_id": assistant_id}).json()
+
+    empty = client.post(f"/api/threads/{side['id']}/summary")
+    assert empty.status_code == 400
+
+    client.post(f"/api/threads/{side['id']}/messages", json={"content": "Look up suppliers"})
+    summary = client.post(f"/api/threads/{side['id']}/summary")
+    assert summary.status_code == 400
+    assert "ANTHROPIC_API_KEY" in summary.json()["detail"]
+
+    merged = client.post(
+        f"/api/threads/{side['id']}/merge",
+        json={"summary": "Suppliers are local."},
+    )
+    assert merged.status_code == 201
+    note = merged.json()
+    assert note["is_note"] is True
+    assert note["role"] == "user"
+    assert note["content"] == [{"type": "text", "text": "From side node: Suppliers are local."}]
+    assert note["thread_id"] == center_id
+    assert note["parent_id"] == assistant_id
+
+    side_messages = client.get(f"/api/threads/{side['id']}/messages").json()["messages"]
+    assert all(message["id"] != note["id"] for message in side_messages)
+
+    center_merge = client.post(f"/api/threads/{center_id}/merge", json={"summary": "nope"})
+    assert center_merge.status_code == 400
+
+
+def test_compaction_blocks_round_trip_without_being_rewritten(client):
+    _conversation_id, center_id = create_conversation(client)
+    blocks = [
+        {"type": "compaction", "content": "The goal is still the original one."},
+        {"type": "text", "text": "Continuing."},
+    ]
+    conn = connect()
+    try:
+        saved = insert_message(
+            conn,
+            thread_id=center_id,
+            parent_id=None,
+            role="assistant",
+            content=blocks,
+            usage={"input_tokens": 3, "iterations": [{"type": "compaction", "input_tokens": 9, "output_tokens": 2}]},
+        )
+    finally:
+        conn.close()
+
+    messages = client.get(f"/api/threads/{center_id}/messages").json()["messages"]
+    assert messages[0]["id"] == saved["id"]
+    assert messages[0]["content"] == blocks
+    assert messages[0]["usage"]["iterations"][0]["type"] == "compaction"

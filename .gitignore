@@ -1,0 +1,10 @@
+backend/.env
+backend/tangents.db
+backend/tangents.db-*
+backend/.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+.DS_Store

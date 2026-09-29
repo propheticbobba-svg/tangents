@@ -1,0 +1,28 @@
+[project]
+name = "tangents"
+version = "0.1.0"
+description = "Local-first chat where conversations are a tree of center and side nodes."
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.69",
+    "fastapi>=0.115",
+    "python-dotenv>=1.0",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
