@@ -69,6 +69,54 @@ def create_conversation(client: TestClient) -> tuple[str, str]:
     return payload["id"], payload["center_thread_id"]
 
 
+def test_delete_conversation_removes_its_threads_and_messages(client: TestClient):
+    kept_id, kept_center = create_conversation(client)
+    gone_id, gone_center = create_conversation(client)
+    conn = connect()
+    try:
+        saved = insert_message(
+            conn,
+            thread_id=gone_center,
+            parent_id=None,
+            role="assistant",
+            content=[{"type": "text", "text": "answer"}],
+        )
+    finally:
+        conn.close()
+    side = client.post("/api/threads", json={"fork_message_id": saved["id"]})
+    assert side.status_code == 201
+    conn = connect()
+    try:
+        insert_message(
+            conn,
+            thread_id=side.json()["id"],
+            parent_id=saved["id"],
+            role="user",
+            content=[{"type": "text", "text": "a tangent"}],
+        )
+    finally:
+        conn.close()
+
+    missing = client.delete("/api/conversations/does-not-exist")
+    assert missing.status_code == 404
+
+    deleted = client.delete(f"/api/conversations/{gone_id}")
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+
+    listed = client.get("/api/conversations")
+    ids = [item["id"] for item in listed.json()]
+    assert gone_id not in ids
+    assert kept_id in ids
+
+    assert client.get(f"/api/conversations/{gone_id}/tree").status_code == 404
+    assert client.get(f"/api/threads/{gone_center}/messages").status_code == 404
+    assert client.get(f"/api/threads/{side.json()['id']}/messages").status_code == 404
+
+    kept_tree = client.get(f"/api/conversations/{kept_id}/tree").json()
+    assert [thread["id"] for thread in kept_tree["threads"]] == [kept_center]
+
+
 def test_new_conversation_has_an_empty_center_node(client: TestClient):
     conversation_id, center_id = create_conversation(client)
     listed = client.get("/api/conversations")

@@ -23,6 +23,7 @@ from app.db import (
     connect,
     create_conversation,
     create_side_node,
+    delete_conversation,
     delete_message,
     get_conversation,
     get_thread,
@@ -111,6 +112,16 @@ def post_conversation() -> dict:
         conversation = create_conversation(conn)
         conversation["center_thread_id"] = center_thread(conn, conversation["id"])["id"]
         return conversation
+    finally:
+        conn.close()
+
+
+@app.delete("/api/conversations/{conversation_id}", status_code=204)
+def remove_conversation(conversation_id: str) -> None:
+    conn = connect()
+    try:
+        if not delete_conversation(conn, conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
     finally:
         conn.close()
 

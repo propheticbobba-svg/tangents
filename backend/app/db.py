@@ -188,6 +188,43 @@ def update_goal(conn: sqlite3.Connection, conversation_id: str, goal: str) -> di
     return get_conversation(conn, conversation_id)
 
 
+def delete_conversation(conn: sqlite3.Connection, conversation_id: str) -> bool:
+    """Remove a conversation and every thread and message that belongs to it.
+
+    Threads point at messages and messages point at threads, so the foreign
+    keys have to be cleared before either table can be deleted.
+    """
+    if get_conversation(conn, conversation_id) is None:
+        return False
+    conn.execute(
+        """
+        UPDATE threads
+        SET fork_message_id = NULL, parent_thread_id = NULL
+        WHERE conversation_id = ?
+        """,
+        (conversation_id,),
+    )
+    conn.execute(
+        """
+        UPDATE messages
+        SET parent_id = NULL
+        WHERE thread_id IN (SELECT id FROM threads WHERE conversation_id = ?)
+        """,
+        (conversation_id,),
+    )
+    conn.execute(
+        """
+        DELETE FROM messages
+        WHERE thread_id IN (SELECT id FROM threads WHERE conversation_id = ?)
+        """,
+        (conversation_id,),
+    )
+    conn.execute("DELETE FROM threads WHERE conversation_id = ?", (conversation_id,))
+    conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    conn.commit()
+    return True
+
+
 def get_thread(conn: sqlite3.Connection, thread_id: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
     if row is None:

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createConversation,
   createThread,
+  deleteConversation,
   getMessages,
   getTree,
   listConversations,
@@ -28,8 +29,13 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [model, setModel] = useState<ModelId>(loadModel);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const centerThreadId = tree?.threads.find((thread) => thread.parent_thread_id === null)?.id ?? null;
+  const currentLabel =
+    conversations.find((item) => item.id === conversationId)?.goal_snippet ||
+    (conversationId ? "New conversation" : "No conversations");
 
   async function openConversation(id: string, preferredThreadId?: string) {
     const nextTree = await getTree(id);
@@ -43,6 +49,22 @@ export function App() {
     setThreadId(nextThread);
     setView(nextThread ? await getMessages(nextThread) : null);
   }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     listConversations()
@@ -64,6 +86,7 @@ export function App() {
 
   async function startConversation() {
     if (sending) return;
+    setMenuOpen(false);
     setError(null);
     setDraft("");
     try {
@@ -72,6 +95,36 @@ export function App() {
       await openConversation(created.id, created.center_thread_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a conversation");
+    }
+  }
+
+  async function removeConversation(id: string) {
+    if (sending) return;
+    const current = conversations.find((item) => item.id === id);
+    if (!current) return;
+    const label = current.goal_snippet || "New conversation";
+    if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await deleteConversation(id);
+      const index = conversations.findIndex((item) => item.id === id);
+      const remaining = conversations.filter((item) => item.id !== id);
+      setConversations(remaining);
+      if (id !== conversationId) return;
+      setDraft("");
+      setStreaming(null);
+      const next = remaining[index] ?? remaining[index - 1] ?? null;
+      if (next) {
+        await openConversation(next.id);
+      } else {
+        setConversationId(null);
+        setTree(null);
+        setThreadId(null);
+        setView(null);
+        setMenuOpen(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete that conversation");
     }
   }
 
@@ -97,6 +150,7 @@ export function App() {
   }
 
   async function send(targetThreadId: string, content: string) {
+    setMenuOpen(false);
     setSending(true);
     setError(null);
     setDraft("");
@@ -190,25 +244,58 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-paper text-ink">
-      <header className="flex h-14 items-center gap-3 border-b border-line px-4">
+      <header className="relative z-20 flex h-14 items-center gap-3 border-b border-line px-4">
         <span className="font-serif text-lg">Tangents</span>
-        <label className="sr-only" htmlFor="conversation">
-          Conversation
-        </label>
-        <select
-          id="conversation"
-          value={conversationId ?? ""}
-          disabled={sending || conversations.length === 0}
-          onChange={(event) => void pickConversation(event.target.value)}
-          className="max-w-xs truncate rounded-md border border-line bg-panel px-2 py-1 text-sm"
-        >
-          {conversations.length === 0 && <option value="">No conversations</option>}
-          {conversations.map((conversation) => (
-            <option key={conversation.id} value={conversation.id}>
-              {conversation.goal_snippet || "New conversation"}
-            </option>
-          ))}
-        </select>
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            disabled={sending || conversations.length === 0}
+            aria-label={`Conversation: ${currentLabel}`}
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+            className="inline-block max-w-xs truncate rounded-md border border-line bg-panel px-2 py-1 text-left text-sm disabled:opacity-40"
+          >
+            {currentLabel}
+          </button>
+          {menuOpen && (
+            <ul
+              role="listbox"
+              aria-label="Conversations"
+              className="absolute left-0 top-full z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded-md border border-line bg-panel py-1 shadow-md"
+            >
+              {conversations.map((conversation) => {
+                const label = conversation.goal_snippet || "New conversation";
+                const selected = conversation.id === conversationId;
+                return (
+                  <li key={conversation.id} className="flex items-center gap-1 pr-1">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void pickConversation(conversation.id);
+                      }}
+                      className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm ${selected ? "text-accent" : "hover:bg-paper"}`}
+                    >
+                      {label}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${label}`}
+                      disabled={sending}
+                      onClick={() => void removeConversation(conversation.id)}
+                      className="shrink-0 rounded px-1.5 py-1 text-xs text-muted hover:text-rose-700 disabled:opacity-40 dark:hover:text-rose-300"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
         <button
           type="button"
           disabled={sending}
