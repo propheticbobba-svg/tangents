@@ -1,4 +1,4 @@
-"""SQLite storage. One file, three tables, no accounts."""
+"""SQLite storage. One file, no accounts."""
 
 from __future__ import annotations
 
@@ -42,6 +42,33 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_threads_conversation ON threads(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id),
+    filename TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES documents(id),
+    conversation_id TEXT NOT NULL REFERENCES conversations(id),
+    ord INTEGER NOT NULL,
+    heading TEXT NOT NULL,
+    text TEXT NOT NULL,
+    embedding BLOB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_conversation ON documents(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_conversation ON chunks(conversation_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    text,
+    chunk_id UNINDEXED,
+    conversation_id UNINDEXED
+);
 """
 
 
@@ -189,7 +216,7 @@ def update_goal(conn: sqlite3.Connection, conversation_id: str, goal: str) -> di
 
 
 def delete_conversation(conn: sqlite3.Connection, conversation_id: str) -> bool:
-    """Remove a conversation and every thread and message that belongs to it.
+    """Remove a conversation and every thread, message, and document that belongs to it.
 
     Threads point at messages and messages point at threads, so the foreign
     keys have to be cleared before either table can be deleted.
@@ -220,6 +247,9 @@ def delete_conversation(conn: sqlite3.Connection, conversation_id: str) -> bool:
         (conversation_id,),
     )
     conn.execute("DELETE FROM threads WHERE conversation_id = ?", (conversation_id,))
+    conn.execute("DELETE FROM chunks_fts WHERE conversation_id = ?", (conversation_id,))
+    conn.execute("DELETE FROM chunks WHERE conversation_id = ?", (conversation_id,))
+    conn.execute("DELETE FROM documents WHERE conversation_id = ?", (conversation_id,))
     conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
     conn.commit()
     return True

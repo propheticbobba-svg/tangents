@@ -32,6 +32,7 @@ COMPACTION_MODELS = (
 
 KEY_MISSING = "ANTHROPIC_API_KEY is not set in backend/.env"
 MODEL_MISSING = "Choose a model in the header, or set ANTHROPIC_MODEL in backend/.env"
+DEFAULT_EMBED_MODEL = "snowflake/snowflake-arctic-embed-m"
 
 
 def _positive_int_env(name: str, default: str) -> int:
@@ -56,6 +57,9 @@ class Settings:
     web_fetch_max_uses: int
     web_fetch_max_content_tokens: int
     web_search_blocked_domains: tuple[str, ...]
+    embed_model: str
+    rag_top_k: int
+    max_upload_mb: int
 
     @property
     def compaction_supported(self) -> bool:
@@ -113,6 +117,10 @@ def load_settings() -> Settings:
         if item.strip()
     )
 
+    embed_model = os.environ.get("EMBED_MODEL", "").strip() or DEFAULT_EMBED_MODEL
+    rag_top_k = _positive_int_env("RAG_TOP_K", "5")
+    max_upload_mb = _positive_int_env("MAX_UPLOAD_MB", "25")
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
     model = os.environ.get("ANTHROPIC_MODEL", "").strip() or None
     return Settings(
@@ -125,6 +133,9 @@ def load_settings() -> Settings:
         web_fetch_max_uses=web_fetch_max_uses,
         web_fetch_max_content_tokens=web_fetch_max_content_tokens,
         web_search_blocked_domains=web_search_blocked_domains,
+        embed_model=embed_model,
+        rag_top_k=rag_top_k,
+        max_upload_mb=max_upload_mb,
     )
 
 

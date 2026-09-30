@@ -2,9 +2,10 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { CompactionDivider } from "./CompactionDivider";
+import { DocPassages } from "./DocPassages";
 import { UsageFooter } from "./UsageFooter";
 import { WebActivity } from "./WebActivity";
-import { compactionSummaries, messageText, webSources, type Message as ChatMessage } from "./types";
+import { compactionSummaries, docPassages, messageText, webSources, type Message as ChatMessage } from "./types";
 
 export function Markdown({ text }: { text: string }) {
   return (
@@ -28,6 +29,7 @@ export function MessageView({
   const text = messageText(message.content);
   const summaries = compactionSummaries(message.content);
   const sources = webSources(message.content);
+  const passages = docPassages(message.content);
   const user = message.role === "user";
 
   return (
@@ -40,6 +42,7 @@ export function MessageView({
         <CompactionDivider key={`${message.id}-compact-${index}`} summary={summary} />
       ))}
       {sources.length > 0 && <WebActivity sources={sources} />}
+      {passages.length > 0 && <DocPassages passages={passages} />}
       <div
         className={
           user

@@ -72,4 +72,35 @@ describe("MessageView fork button", () => {
 
     expect(screen.queryByRole("button", { name: "Fork" })).toBeNull();
   });
+
+  it("shows retrieved passages outside the user bubble", () => {
+    render(
+      <MessageView
+        message={message("user", {
+          content: [
+            {
+              type: "search_result",
+              title: "Walls - Basement",
+              source: "doc:1#0",
+              content: [{ type: "text", text: "The basement journals name Marley." }],
+            },
+            {
+              type: "search_result",
+              title: "Walls - Ending",
+              source: "doc:1#1",
+              content: [{ type: "text", text: "Eren is defeated and killed." }],
+            },
+            { type: "text", text: "What was hidden?" },
+          ],
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Searched your documents — 2 passages" })).toBeTruthy();
+    const bubble = document.querySelector(".bg-user");
+    expect(bubble?.textContent).toBe("What was hidden?");
+    expect(bubble?.textContent).not.toContain("basement journals");
+  });
 });
