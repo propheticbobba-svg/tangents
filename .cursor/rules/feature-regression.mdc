@@ -27,7 +27,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 - Context for a turn is only the `parent_id` walk to the root. The center node never receives side-node tokens. A side node does not see messages added to its parent after the fork. Sibling forks do not see each other.
 - A side node can be forked only from an assistant message. Its first message's `parent_id` is that fork message.
 - A failed turn deletes the user message it just saved and does not keep a goal or title from that turn.
-- Stored message content is raw Anthropic blocks and is not edited. The only message delete is that failed-turn rollback, plus deleting a whole conversation.
+- Stored message content is raw Anthropic blocks and is not edited. Messages are deleted only by the failed-turn rollback, by deleting a side node (its subtree), and by deleting a whole conversation.
 - Every assistant message has Fork. A text selection offers Fork from this (quote in the composer) and Explain this (quote plus "Explain this." sent immediately).
 - Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). Introduced on `sticky-fork-button`, now on `main`. `frontend/src/Message.test.tsx` covers it: the button keeps `sticky` and `bottom-3`, its nearest non-`contents` ancestor is the `<article>`, and it is never inside a `<p>`. Keep the `pointer-events-none contents` wrapper.
 
@@ -37,6 +37,8 @@ Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/a
 
 - After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. Later messages do not rename the node. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
+- The center node stays on the tree after a fork. Cards are remeasured when the graph changes, so an existing node is not left hidden when its size did not change.
+- Side-node cards show Delete on hover; the center card does not. Clicking Delete does not switch nodes. `frontend/src/TreeView.test.tsx` covers both.
 - A side node shows the breadcrumb from center. Clicking a breadcrumb title or a tree card switches to that node. There is no Back to center button.
 
 ## Pinned goal
@@ -79,6 +81,16 @@ Files: `frontend/src/models.ts`, `frontend/src/theme.ts`, the header in `fronten
 
 - The header picker chooses the model for that turn and remembers it in the browser. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5.
 - Dark mode follows the system until toggled; the choice is stored in `localStorage`.
+
+## Node delete
+
+Files: `delete_thread` in `backend/app/db.py`, `DELETE /api/threads/{id}` in `backend/app/main.py`, `deleteThread` in `frontend/src/api.ts`, `removeThread` in `frontend/src/App.tsx`, the Delete control in `frontend/src/TreeView.tsx`.
+
+- Deleting a side node deletes it and every descendant node, with their messages. Children cannot outlive their parent: their fork message and context path live in it.
+- The center node cannot be deleted (400). Deleting the conversation is how you remove it. Unknown id is 404; success is 204.
+- Clear `fork_message_id`, `parent_thread_id`, and `parent_id` inside the subtree before deleting messages, then threads. Nothing outside the subtree changes; the parent's fork message stays.
+- Confirm names the node and how many side nodes go with it. If the open node was removed, open the deleted node's parent; otherwise stay where you are.
+- Delete is disabled while a reply streams. A turn whose node is deleted mid-stream rolls back through the normal error path.
 
 ## Removed
 

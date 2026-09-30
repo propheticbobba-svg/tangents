@@ -225,6 +225,54 @@ def delete_conversation(conn: sqlite3.Connection, conversation_id: str) -> bool:
     return True
 
 
+def delete_thread(conn: sqlite3.Connection, thread_id: str) -> bool | None:
+    """Remove a side node and every node forked under it.
+
+    A child cannot outlive its parent: its fork message and context path live
+    in the parent. Threads point at messages and messages point at threads, so
+    the foreign keys inside the subtree have to be cleared before either table
+    can be deleted. Returns False when the thread does not exist, and None when
+    it is the center node.
+    """
+    thread = get_thread(conn, thread_id)
+    if thread is None:
+        return False
+    if thread["parent_thread_id"] is None:
+        return None
+
+    subtree = {thread_id}
+    growing = True
+    while growing:
+        growing = False
+        for item in list_threads(conn, thread["conversation_id"]):
+            parent_id = item["parent_thread_id"]
+            if parent_id in subtree and item["id"] not in subtree:
+                subtree.add(item["id"])
+                growing = True
+    ids = tuple(subtree)
+    placeholders = ", ".join("?" for _ in ids)
+    conn.execute(
+        f"""
+        UPDATE threads
+        SET fork_message_id = NULL, parent_thread_id = NULL
+        WHERE id IN ({placeholders})
+        """,
+        ids,
+    )
+    conn.execute(
+        f"""
+        UPDATE messages
+        SET parent_id = NULL
+        WHERE thread_id IN ({placeholders})
+        """,
+        ids,
+    )
+    conn.execute(f"DELETE FROM messages WHERE thread_id IN ({placeholders})", ids)
+    conn.execute(f"DELETE FROM threads WHERE id IN ({placeholders})", ids)
+    conn.commit()
+    return True
+
+
 def get_thread(conn: sqlite3.Connection, thread_id: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
     if row is None:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -7,6 +7,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -41,13 +42,17 @@ function cardWidth(title: string, kind: string): number {
   return Math.ceil(Math.max(titleWidth, kindWidth) + CARD_CHROME);
 }
 
-type ThreadNodeData = {
+type ThreadCard = {
   title: string;
   kind: string;
   forkSnippet: string | null;
   active: boolean;
   hasChildren: boolean;
   isCenter: boolean;
+};
+
+type ThreadNodeData = ThreadCard & {
+  onDelete: (threadId: string) => void;
 };
 
 function childrenOf(threads: Thread[], parentId: string | null): Thread[] {
@@ -60,7 +65,7 @@ function childrenOf(threads: Thread[], parentId: string | null): Thread[] {
     });
 }
 
-function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node<ThreadNodeData>[]; edges: Edge[] } {
+function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node<ThreadCard>[]; edges: Edge[] } {
   const root = threads.find((thread) => thread.parent_thread_id === null);
   if (!root) return { nodes: [], edges: [] };
 
@@ -85,7 +90,7 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
   }
   measure(root.id);
 
-  const nodes: Node<ThreadNodeData>[] = [];
+  const nodes: Node<ThreadCard>[] = [];
   const edges: Edge[] = [];
 
   function place(thread: Thread, left: number, top: number) {
@@ -127,7 +132,7 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
   return { nodes, edges };
 }
 
-function ThreadNode({ data }: NodeProps<Node<ThreadNodeData>>) {
+function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
   return (
     <div
       title={data.forkSnippet ?? undefined}
@@ -137,6 +142,20 @@ function ThreadNode({ data }: NodeProps<Node<ThreadNodeData>>) {
     >
       {!data.isCenter && (
         <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-accent" />
+      )}
+      {!data.isCenter && (
+        <button
+          type="button"
+          aria-label={`Delete ${data.title}`}
+          className="nodrag nopan absolute -top-2 right-1 hidden rounded border border-line bg-panel px-1 py-0.5 text-[10px] leading-none text-muted hover:text-rose-700 group-hover:block dark:hover:text-rose-300"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onDelete(id);
+          }}
+        >
+          Delete
+        </button>
       )}
       <div className="whitespace-nowrap text-[10px] uppercase tracking-wide text-muted">{data.kind}</div>
       <div className="whitespace-nowrap text-sm font-medium">{data.title}</div>
@@ -158,18 +177,36 @@ function Canvas({
   threads,
   activeThreadId,
   onSelect,
+  onDelete,
   disabled,
   colorMode,
 }: {
   threads: Thread[];
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
+  onDelete: (threadId: string) => void;
   disabled: boolean;
   colorMode: "light" | "dark";
 }) {
   const { fitView } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const onDeleteRef = useRef(onDelete);
+  onDeleteRef.current = onDelete;
   const [fontsReady, setFontsReady] = useState(() => document.fonts?.status === "loaded");
   const graph = useMemo(() => layout(threads, activeThreadId), [threads, activeThreadId, fontsReady]);
+  // onDelete stays out of this memo. A new function each render would replace the
+  // nodes prop, and React Flow then forgets the measured size of every card.
+  const nodes = useMemo(
+    () =>
+      graph.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          onDelete: (threadId: string) => onDeleteRef.current(threadId),
+        },
+      })),
+    [graph],
+  );
 
   useEffect(() => {
     const ready = document.fonts?.ready;
@@ -184,15 +221,26 @@ function Canvas({
   }, []);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      void fitView({ padding: 0.25, maxZoom: 1, duration: 200 });
+    // React Flow hides a node until it has measured it, and replaces of the
+    // nodes prop clear that measurement. A card whose size did not change never
+    // gets another ResizeObserver callback, so the center stays invisible after
+    // a fork. Measure here, then fit the view once those sizes are stored.
+    updateNodeInternals(graph.nodes.map((node) => node.id));
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        void fitView({ padding: 0.25, maxZoom: 1, duration: 200 });
+      });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [graph, fitView]);
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [graph, fitView, updateNodeInternals]);
 
   return (
     <ReactFlow
-      nodes={graph.nodes}
+      nodes={nodes}
       edges={graph.edges}
       nodeTypes={nodeTypes}
       colorMode={colorMode}
@@ -217,6 +265,7 @@ export function TreeView(props: {
   threads: Thread[];
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
+  onDelete: (threadId: string) => void;
   disabled: boolean;
   colorMode: "light" | "dark";
 }) {
