@@ -9,7 +9,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import connect, insert_message, short_title
+from app.context import get_context
+from app.db import connect, insert_message, messages_in_conversation, short_title
 from app.llm import LLMError
 
 
@@ -115,6 +116,96 @@ def test_delete_conversation_removes_its_threads_and_messages(client: TestClient
 
     kept_tree = client.get(f"/api/conversations/{kept_id}/tree").json()
     assert [thread["id"] for thread in kept_tree["threads"]] == [kept_center]
+
+
+def _save(thread_id: str, parent_id: str | None, role: str, text: str) -> dict:
+    conn = connect()
+    try:
+        return insert_message(
+            conn,
+            thread_id=thread_id,
+            parent_id=parent_id,
+            role=role,
+            content=[{"type": "text", "text": text}],
+        )
+    finally:
+        conn.close()
+
+
+def test_delete_side_node_removes_its_subtree(client: TestClient):
+    conversation_id, center_id = create_conversation(client)
+    center_user = _save(center_id, None, "user", "center user")
+    center_assistant = _save(center_id, center_user["id"], "assistant", "center answer")
+
+    side_a = client.post("/api/threads", json={"fork_message_id": center_assistant["id"]})
+    assert side_a.status_code == 201
+    a_id = side_a.json()["id"]
+    a_user = _save(a_id, center_assistant["id"], "user", "tangent A")
+    a_assistant = _save(a_id, a_user["id"], "assistant", "answer A")
+
+    side_a1 = client.post("/api/threads", json={"fork_message_id": a_assistant["id"]})
+    assert side_a1.status_code == 201
+    a1_id = side_a1.json()["id"]
+    a1_user = _save(a1_id, a_assistant["id"], "user", "tangent A1")
+    a1_assistant = _save(a1_id, a1_user["id"], "assistant", "answer A1")
+
+    side_a1a = client.post("/api/threads", json={"fork_message_id": a1_assistant["id"]})
+    assert side_a1a.status_code == 201
+    a1a_id = side_a1a.json()["id"]
+    a1a_user = _save(a1a_id, a1_assistant["id"], "user", "tangent A1a")
+    _save(a1a_id, a1a_user["id"], "assistant", "answer A1a")
+
+    side_b = client.post("/api/threads", json={"fork_message_id": center_assistant["id"]})
+    assert side_b.status_code == 201
+    b_id = side_b.json()["id"]
+    b_user = _save(b_id, center_assistant["id"], "user", "tangent B")
+    b_assistant = _save(b_id, b_user["id"], "assistant", "answer B")
+
+    conn = connect()
+    try:
+        before = get_context(messages_in_conversation(conn, conversation_id), b_assistant["id"])
+    finally:
+        conn.close()
+
+    deleted = client.delete(f"/api/threads/{a_id}")
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+
+    tree = client.get(f"/api/conversations/{conversation_id}/tree").json()
+    assert {thread["id"] for thread in tree["threads"]} == {center_id, b_id}
+    assert client.get(f"/api/threads/{a_id}/messages").status_code == 404
+    assert client.get(f"/api/threads/{a1_id}/messages").status_code == 404
+    assert client.get(f"/api/threads/{a1a_id}/messages").status_code == 404
+
+    conn = connect()
+    try:
+        thread_ids = {row["id"] for row in conn.execute("SELECT id FROM threads").fetchall()}
+        message_ids = {row["id"] for row in conn.execute("SELECT id FROM messages").fetchall()}
+        after = get_context(messages_in_conversation(conn, conversation_id), b_assistant["id"])
+    finally:
+        conn.close()
+    assert thread_ids == {center_id, b_id}
+    assert center_assistant["id"] in message_ids
+    assert a_user["id"] not in message_ids
+    assert a_assistant["id"] not in message_ids
+    assert a1_user["id"] not in message_ids
+    assert a1a_user["id"] not in message_ids
+    assert [message["id"] for message in after] == [message["id"] for message in before]
+    assert [message["content"] for message in after] == [message["content"] for message in before]
+
+    center_messages = client.get(f"/api/threads/{center_id}/messages").json()["messages"]
+    assert [message["id"] for message in center_messages] == [center_user["id"], center_assistant["id"]]
+    b_messages = client.get(f"/api/threads/{b_id}/messages").json()["messages"]
+    assert [message["id"] for message in b_messages] == [b_user["id"], b_assistant["id"]]
+
+    center = client.delete(f"/api/threads/{center_id}")
+    assert center.status_code == 400
+    assert center.json()["detail"] == "The center node cannot be deleted"
+    assert client.get(f"/api/threads/{center_id}/messages").status_code == 200
+
+    missing = client.delete("/api/threads/does-not-exist")
+    assert missing.status_code == 404
+    assert client.delete(f"/api/threads/{a_id}").status_code == 404
 
 
 def test_new_conversation_has_an_empty_center_node(client: TestClient):

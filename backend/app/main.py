@@ -25,6 +25,7 @@ from app.db import (
     create_side_node,
     delete_conversation,
     delete_message,
+    delete_thread,
     get_conversation,
     get_thread,
     init_db,
@@ -226,6 +227,19 @@ def post_thread(body: NewThread) -> dict:
         if thread is None:
             raise HTTPException(status_code=404, detail="Message not found")
         return thread
+    finally:
+        conn.close()
+
+
+@app.delete("/api/threads/{thread_id}", status_code=204)
+def remove_thread(thread_id: str) -> None:
+    conn = connect()
+    try:
+        deleted = delete_thread(conn, thread_id)
+        if deleted is False:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if deleted is None:
+            raise HTTPException(status_code=400, detail="The center node cannot be deleted")
     finally:
         conn.close()
 

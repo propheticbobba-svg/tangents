@@ -3,6 +3,7 @@ import {
   createConversation,
   createThread,
   deleteConversation,
+  deleteThread,
   getMessages,
   getTree,
   listConversations,
@@ -14,7 +15,23 @@ import { TreeView } from "./TreeView";
 import { MODELS, loadModel, saveModel, type ModelId } from "./models";
 import { loadWebSearch, saveWebSearch } from "./websearch";
 import { useTheme } from "./theme";
-import { quoteText, type Conversation, type StreamingTurn, type ThreadView, type Tree } from "./types";
+import { quoteText, type Conversation, type StreamingTurn, type Thread, type ThreadView, type Tree } from "./types";
+
+function subtreeIds(threads: Thread[], rootId: string): Set<string> {
+  const ids = new Set<string>([rootId]);
+  let growing = true;
+  while (growing) {
+    growing = false;
+    for (const thread of threads) {
+      const parentId = thread.parent_thread_id;
+      if (parentId !== null && ids.has(parentId) && !ids.has(thread.id)) {
+        ids.add(thread.id);
+        growing = true;
+      }
+    }
+  }
+  return ids;
+}
 
 export function App() {
   const { resolved, toggle } = useTheme();
@@ -126,6 +143,34 @@ export function App() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete that conversation");
+    }
+  }
+
+  async function removeThread(id: string) {
+    if (sending || !tree || !conversationId) return;
+    const thread = tree.threads.find((item) => item.id === id);
+    if (!thread || thread.parent_thread_id === null) return;
+    const subtree = subtreeIds(tree.threads, id);
+    const childCount = subtree.size - 1;
+    const title = thread.title;
+    const prompt =
+      childCount === 0
+        ? `Delete “${title}”? This cannot be undone.`
+        : `Delete “${title}” and ${childCount} side ${childCount === 1 ? "node" : "nodes"} under it? This cannot be undone.`;
+    if (!window.confirm(prompt)) return;
+    const parentId = thread.parent_thread_id;
+    setError(null);
+    try {
+      await deleteThread(id);
+      setTree(await getTree(conversationId));
+      if (threadId !== null && subtree.has(threadId)) {
+        setDraft("");
+        setStreaming(null);
+        setThreadId(parentId);
+        setView(await getMessages(parentId));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete that node");
     }
   }
 
@@ -410,6 +455,7 @@ export function App() {
                 threads={tree?.threads ?? []}
                 activeThreadId={threadId}
                 onSelect={(id) => void selectThread(id)}
+                onDelete={(id) => void removeThread(id)}
                 disabled={sending}
                 colorMode={resolved}
               />
