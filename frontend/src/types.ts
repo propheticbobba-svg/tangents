@@ -1,7 +1,12 @@
+export type WebSource = { title: string; url: string };
+
 export type ContentBlock = {
   type: string;
   text?: string;
-  content?: string | null;
+  content?: unknown;
+  name?: string;
+  url?: string;
+  title?: string;
 };
 
 export type UsageIteration = {
@@ -16,6 +21,7 @@ export type Usage = {
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
   iterations?: UsageIteration[];
+  server_tool_use?: { web_search_requests?: number; web_fetch_requests?: number };
 };
 
 export type Message = {
@@ -69,6 +75,7 @@ export type Tree = {
 export type StreamingTurn = {
   text: string;
   summaries: string[];
+  activity: string[];
 };
 
 export function messageText(content: ContentBlock[]): string {
@@ -81,7 +88,29 @@ export function messageText(content: ContentBlock[]): string {
 export function compactionSummaries(content: ContentBlock[]): string[] {
   return content
     .filter((block) => block.type === "compaction")
-    .map((block) => block.content ?? "");
+    .map((block) => (typeof block.content === "string" ? block.content : ""));
+}
+
+function pushSource(url: unknown, title: unknown, seen: Set<string>, out: WebSource[]) {
+  if (typeof url !== "string" || !url || seen.has(url)) return;
+  seen.add(url);
+  out.push({ title: typeof title === "string" && title ? title : url, url });
+}
+
+export function webSources(content: ContentBlock[]): WebSource[] {
+  const seen = new Set<string>();
+  const sources: WebSource[] = [];
+  for (const block of content) {
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const item of block.content as ContentBlock[]) {
+        pushSource(item?.url, item?.title, seen, sources);
+      }
+    } else if (block.type === "web_fetch_tool_result") {
+      const inner = block.content as ContentBlock | undefined;
+      if (inner && inner.type === "web_fetch_result") pushSource(inner.url, inner.title, seen, sources);
+    }
+  }
+  return sources;
 }
 
 export function quoteText(text: string): string {

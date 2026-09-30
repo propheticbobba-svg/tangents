@@ -3,7 +3,8 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { CompactionDivider } from "./CompactionDivider";
 import { UsageFooter } from "./UsageFooter";
-import { compactionSummaries, messageText, type Message as ChatMessage } from "./types";
+import { WebActivity } from "./WebActivity";
+import { compactionSummaries, messageText, webSources, type Message as ChatMessage } from "./types";
 
 export function Markdown({ text }: { text: string }) {
   return (
@@ -26,6 +27,7 @@ export function MessageView({
 }) {
   const text = messageText(message.content);
   const summaries = compactionSummaries(message.content);
+  const sources = webSources(message.content);
   const user = message.role === "user";
 
   return (
@@ -37,6 +39,7 @@ export function MessageView({
       {summaries.map((summary, index) => (
         <CompactionDivider key={`${message.id}-compact-${index}`} summary={summary} />
       ))}
+      {sources.length > 0 && <WebActivity sources={sources} />}
       <div
         className={
           user
@@ -66,16 +69,35 @@ export function MessageView({
   );
 }
 
-export function StreamingMessage({ text, summaries }: { text: string; summaries: string[] }) {
+export function StreamingMessage({
+  text,
+  summaries,
+  activity,
+}: {
+  text: string;
+  summaries: string[];
+  activity: string[];
+}) {
   return (
     <article className="mr-10" data-role="assistant">
       {summaries.map((summary, index) => (
         <CompactionDivider key={`stream-compact-${index}`} summary={summary} />
       ))}
+      {activity.length > 0 && (
+        <ul className="mb-2 select-none space-y-0.5 text-xs text-muted">
+          {activity.map((line, index) => (
+            <li key={`stream-activity-${index}`} className="truncate">
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
       {text ? (
         <Markdown text={text} />
       ) : (
-        summaries.length === 0 && <p className="text-sm text-muted">Thinking…</p>
+        summaries.length === 0 && activity.length === 0 && (
+          <p className="text-sm text-muted">Thinking…</p>
+        )
       )}
     </article>
   );

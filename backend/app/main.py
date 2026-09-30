@@ -36,6 +36,7 @@ from app.db import (
     note_user_message,
     rename_thread,
     short_title,
+    text_of,
     thread_view,
     tree,
     undo_user_message,
@@ -82,6 +83,7 @@ class GoalUpdate(BaseModel):
 class NewMessage(BaseModel):
     content: str = Field(min_length=1)
     model: str | None = None
+    web: bool = False
 
 
 class NewThread(BaseModel):
@@ -94,6 +96,59 @@ class MergeBody(BaseModel):
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _slim_blocks(blocks: list) -> list:
+    """Drop payloads the browser cannot use.
+
+    Response shaping only. Stored rows and anything sent to Anthropic keep the full
+    blocks, because the API requires encrypted content back unmodified.
+    """
+    slimmed: list = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            slimmed.append(block)
+            continue
+        block_type = block.get("type")
+        if block_type == "web_search_tool_result":
+            content = block.get("content")
+            if isinstance(content, list):
+                block = {
+                    **block,
+                    "content": [
+                        {key: value for key, value in item.items() if key != "encrypted_content"}
+                        if isinstance(item, dict)
+                        else item
+                        for item in content
+                    ],
+                }
+        elif block_type == "web_fetch_tool_result":
+            content = block.get("content")
+            document = content.get("content") if isinstance(content, dict) else None
+            if isinstance(document, dict):
+                source = document.get("source")
+                data = source.get("data") if isinstance(source, dict) else None
+                block = {
+                    **block,
+                    "content": {
+                        **content,
+                        "content": {
+                            **document,
+                            "source": {
+                                "type": "omitted",
+                                "characters": len(data) if isinstance(data, str) else 0,
+                            },
+                        },
+                    },
+                }
+        slimmed.append(block)
+    return slimmed
+
+
+def slim_message(message: dict | None) -> dict | None:
+    if message is None:
+        return None
+    return {**message, "content": _slim_blocks(message["content"])}
 
 
 @app.get("/api/conversations")
@@ -157,7 +212,10 @@ def get_messages(thread_id: str) -> dict:
         thread = get_thread(conn, thread_id)
         if thread is None:
             raise HTTPException(status_code=404, detail="Thread not found")
-        return thread_view(conn, thread)
+        view = thread_view(conn, thread)
+        view["messages"] = [slim_message(message) for message in view["messages"]]
+        view["forked_from"] = slim_message(view["forked_from"])
+        return view
     finally:
         conn.close()
 
@@ -182,12 +240,12 @@ def _fail_turn(conn, thread_id: str, message_id: str, undo: dict) -> None:
     undo_user_message(conn, thread_id, undo)
 
 
-def _name_first_turn(conn, thread_id: str, content: str, undo: dict) -> None:
+def _name_first_turn(conn, thread_id: str, content: str, undo: dict, reply_text: str = "") -> None:
     """Name the node after its first successful reply. A title failure keeps the turn."""
     if not undo.get("first_turn"):
         return
     try:
-        title = (suggest_title(content) or "").strip() or short_title(content)
+        title = (suggest_title(content, reply_text) or "").strip() or short_title(content)
         rename_thread(conn, thread_id, title)
     except Exception:
         logger.exception("could not name the node")
@@ -197,7 +255,7 @@ def _name_first_turn(conn, thread_id: str, content: str, undo: dict) -> None:
             logger.exception("could not store the fallback title")
 
 
-def _chat_events(thread_id: str, content: str, model: str | None) -> Iterator[str]:
+def _chat_events(thread_id: str, content: str, model: str | None, web: bool) -> Iterator[str]:
     conn = connect()
     message_id: str | None = None
     undo: dict = {}
@@ -235,11 +293,15 @@ def _chat_events(thread_id: str, content: str, model: str | None) -> Iterator[st
 
         try:
             done: dict | None = None
-            for event in stream_chat(path, goal, model):
+            for event in stream_chat(path, goal, model, web=web):
                 if event["type"] == "delta":
                     yield _sse("delta", {"text": event["text"]})
                 elif event["type"] == "compaction":
                     yield _sse("compaction", {"content": event["content"]})
+                elif event["type"] == "web_activity":
+                    yield _sse("web_activity", event)
+                elif event["type"] == "web_result":
+                    yield _sse("web_result", event)
                 elif event["type"] == "done":
                     done = event
             if done is None:
@@ -253,8 +315,8 @@ def _chat_events(thread_id: str, content: str, model: str | None) -> Iterator[st
                 usage=done["usage"],
             )
             message_id = None
-            _name_first_turn(conn, thread_id, content, undo)
-            yield _sse("done", assistant)
+            _name_first_turn(conn, thread_id, content, undo, text_of(done["content"]))
+            yield _sse("done", slim_message(assistant))
         except LLMError as exc:
             _fail_turn(conn, thread_id, message_id, undo)
             message_id = None
@@ -286,7 +348,7 @@ async def post_message(thread_id: str, body: NewMessage) -> StreamingResponse:
 
     def worker() -> None:
         try:
-            for chunk in _chat_events(thread_id, content, body.model):
+            for chunk in _chat_events(thread_id, content, body.model, body.web):
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
         except Exception as exc:
             logger.exception("chat stream failed")

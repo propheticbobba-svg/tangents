@@ -58,7 +58,7 @@ def parse_sse(body: str):
     return events
 
 
-def haiku_title(text: str) -> str:
+def haiku_title(text: str, reply_text: str = "") -> str:
     return f"Named: {text}"
 
 
@@ -171,7 +171,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None):
+    def fake_stream(path, goal, model=None, web=False):
         seen["model"] = model
         yield {
             "type": "done",
@@ -194,7 +194,7 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
-    def fake_stream(path, goal, model=None):
+    def fake_stream(path, goal, model=None, web=False):
         seen["ids"] = [message["id"] for message in path]
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -239,7 +239,7 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None):
+    def fake_stream(path, goal, model=None, web=False):
         text = "answer " + path[-1]["content"][0]["text"]
         yield {"type": "delta", "text": text}
         yield {
@@ -295,7 +295,7 @@ def test_title_falls_back_and_a_later_turn_keeps_it(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None: iter(
+        lambda path, goal, model=None, web=False: iter(
             [
                 {
                     "type": "done",
@@ -307,7 +307,7 @@ def test_title_falls_back_and_a_later_turn_keeps_it(client, monkeypatch):
     )
     calls: list[str] = []
 
-    def titles(text: str) -> str:
+    def titles(text: str, reply_text: str = "") -> str:
         calls.append(text)
         if text.startswith("Empty"):
             return "   "
@@ -337,7 +337,7 @@ def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, mo
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None: iter(
+        lambda path, goal, model=None, web=False: iter(
             [
                 {
                     "type": "done",
@@ -364,7 +364,7 @@ def test_merge_appends_a_labeled_note_to_the_parent_only(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None: iter(
+        lambda path, goal, model=None, web=False: iter(
             [
                 {
                     "type": "done",
@@ -429,3 +429,123 @@ def test_compaction_blocks_round_trip_without_being_rewritten(client):
     assert messages[0]["id"] == saved["id"]
     assert messages[0]["content"] == blocks
     assert messages[0]["usage"]["iterations"][0]["type"] == "compaction"
+
+
+def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+
+    def fake_stream(path, goal, model=None, web=False):
+        seen["web"] = web
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    _conversation_id, center_id = create_conversation(client)
+    first = client.post(f"/api/threads/{center_id}/messages", json={"content": "Hello"})
+    assert parse_sse(first.text)[-1][0] == "done"
+    assert seen["web"] is False
+    second = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello again", "web": True},
+    )
+    assert parse_sse(second.text)[-1][0] == "done"
+    assert seen["web"] is True
+
+
+def test_search_results_are_stored_whole_but_trimmed_for_the_browser(client):
+    _conversation_id, center_id = create_conversation(client)
+    page = "A" * 50
+    blocks = [
+        {
+            "type": "web_search_tool_result",
+            "tool_use_id": "toolu_1",
+            "content": [
+                {
+                    "type": "web_search_result",
+                    "title": "Docs",
+                    "url": "https://example.com",
+                    "encrypted_content": "keep-me-in-the-database",
+                }
+            ],
+        },
+        {
+            "type": "web_fetch_tool_result",
+            "tool_use_id": "toolu_2",
+            "content": {
+                "type": "web_fetch_result",
+                "url": "https://example.com/page",
+                "content": {
+                    "type": "document",
+                    "title": "Page",
+                    "source": {"type": "text", "data": page},
+                },
+            },
+        },
+        {"type": "text", "text": "Based on the docs."},
+    ]
+    conn = connect()
+    try:
+        insert_message(
+            conn,
+            thread_id=center_id,
+            parent_id=None,
+            role="assistant",
+            content=blocks,
+        )
+    finally:
+        conn.close()
+
+    payload = client.get(f"/api/threads/{center_id}/messages").json()
+    dumped = json.dumps(payload)
+    assert "encrypted_content" not in dumped
+    assert "keep-me-in-the-database" not in dumped
+    assert page not in dumped
+    fetch = payload["messages"][0]["content"][1]
+    assert fetch["content"]["content"]["source"] == {"type": "omitted", "characters": 50}
+    assert payload["messages"][0]["content"][2]["text"] == "Based on the docs."
+
+    conn = connect()
+    try:
+        stored = conn.execute("SELECT content FROM messages").fetchone()[0]
+    finally:
+        conn.close()
+    assert "keep-me-in-the-database" in stored
+    assert page in stored
+
+
+def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr("app.main.suggest_title", haiku_title)
+
+    def fake_stream(path, goal, model=None, web=False):
+        yield {
+            "type": "done",
+            "content": [
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": "toolu_err",
+                    "content": {
+                        "type": "web_search_tool_result_error",
+                        "error_code": "too_many_requests",
+                    },
+                },
+                {"type": "text", "text": "I could not search."},
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "What happened today", "web": True},
+    )
+    events = parse_sse(response.text)
+    assert events[-1][0] == "done"
+    messages = client.get(f"/api/threads/{center_id}/messages").json()["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant"]
+    assert messages[0]["content"][0]["text"] == "What happened today"

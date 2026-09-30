@@ -60,7 +60,7 @@ export function ChatPane({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [view?.messages.length, streaming?.text, streaming?.summaries.length]);
+  }, [view?.messages.length, streaming?.text, streaming?.summaries.length, streaming?.activity.length]);
 
   function captureSelection() {
     const sel = window.getSelection();
@@ -132,7 +132,13 @@ export function ChatPane({
               forkDisabled={sending}
             />
           ))}
-          {streaming && <StreamingMessage text={streaming.text} summaries={streaming.summaries} />}
+          {streaming && (
+            <StreamingMessage
+              text={streaming.text}
+              summaries={streaming.summaries}
+              activity={streaming.activity}
+            />
+          )}
           <div ref={bottomRef} />
         </div>
       </div>
