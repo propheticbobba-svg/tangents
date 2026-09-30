@@ -7,6 +7,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   useUpdateNodeInternals,
   type Edge,
   type Node,
@@ -237,6 +238,16 @@ function Canvas({
       cancelAnimationFrame(second);
     };
   }, [graph, fitView, updateNodeInternals]);
+
+  const paneWidth = useStore((state) => state.width);
+
+  useEffect(() => {
+    if (paneWidth === 0) return;
+    const frame = requestAnimationFrame(() => {
+      void fitView({ padding: 0.25, maxZoom: 1 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [paneWidth, fitView]);
 
   return (
     <ReactFlow
