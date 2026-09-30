@@ -34,7 +34,6 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const centerThreadId = tree?.threads.find((thread) => thread.parent_thread_id === null)?.id ?? null;
   const currentLabel =
     conversations.find((item) => item.id === conversationId)?.goal_snippet ||
     (conversationId ? "New conversation" : "No conversations");
@@ -258,13 +257,6 @@ export function App() {
     setConversations((list) => list.map((item) => (item.id === conversationId ? { ...item, ...updated } : item)));
   }
 
-  async function onMerged(parentThreadId: string) {
-    if (conversationId) setTree(await getTree(conversationId));
-    setThreadId(parentThreadId);
-    setDraft("");
-    setView(await getMessages(parentThreadId));
-  }
-
   return (
     <div className="flex h-full flex-col bg-paper text-ink">
       <header className="relative z-20 flex h-14 items-center gap-3 border-b border-line px-4">
@@ -407,12 +399,7 @@ export function App() {
             onFork={(messageId) => void forkFrom(messageId, "open")}
             onForkSelection={(messageId, text, mode) => void forkFrom(messageId, mode, text)}
             onSelectThread={(id) => void selectThread(id)}
-            onBackToCenter={() => {
-              if (centerThreadId) void selectThread(centerThreadId);
-            }}
             onSaveGoal={saveGoal}
-            onMerged={(parentThreadId) => void onMerged(parentThreadId)}
-            model={model}
           />
           <aside className="flex w-96 shrink-0 flex-col border-l border-line">
             <div className="border-b border-line px-3 py-2 text-[10px] uppercase tracking-wide text-muted">

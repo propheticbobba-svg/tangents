@@ -37,7 +37,7 @@ Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/a
 
 - After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. Later messages do not rename the node. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
-- A side node shows the breadcrumb from center and Back to center.
+- A side node shows the breadcrumb from center. Clicking a breadcrumb title or a tree card switches to that node. There is no Back to center button.
 
 ## Pinned goal
 
@@ -46,19 +46,13 @@ Files: `frontend/src/PinnedGoal.tsx`, `update_goal` in `backend/app/db.py`, `PAT
 - The goal starts as the center node's first user message, and only while `goal` is still null. Editing it does not change the transcript. Later messages do not overwrite an edited goal.
 - It stays at the top of every node, truncated to two lines, expandable. Enter or blur saves; Esc cancels.
 
-## Merge back
-
-Files: `frontend/src/MergeBack.tsx`, summary and merge routes in `backend/app/main.py`.
-
-- Summary is one call, returns `{summary}`, and saves nothing. Merge back is never automatic. Confirming appends a user note `From side node: ...` to the parent tip only, with `is_note` set. The center node cannot merge.
-
 ## Streaming, cache, and compaction
 
 Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDivider.tsx`, `frontend/src/UsageFooter.tsx`.
 
 - A chat turn streams `user_message`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
 - Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: last block of the inherited path, and last block of the new user message.
-- Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button. Merge-back calls do not compact.
+- Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button.
 - `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
 
 ## Web search and fetch
@@ -69,7 +63,7 @@ Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/
 - Search is never forced. With the toggle on, `tool_choice` stays unset and a system instruction tells Claude to look up facts that can change, recent events, specific pages, and anything it is not sure is still true, and not to answer those from memory. A turn that does not search is still correct when the conversation itself is enough. The instruction is omitted when the toggle is off.
 - Both tools are Anthropic server tools (`web_search_20260318`, `web_fetch_20260318`), so a turn that searches is still one request and one saved assistant message. No `tool_use` or `tool_result` rows ever enter the tree. Do not replace these with a client-side search library without redesigning how tool rows live in a forkable tree. Both tools set `allowed_callers` to `["direct"]`. The SDK default includes code-execution callers, and Haiku 4.5 rejects that.
 - `web_fetch` may only fetch URLs the user pasted or that `web_search` returned: `url_sources` sets `user_input` to `all`, `server_tool_results` to `only` naming `web_search`, and `client_tool_results` to `none`. Keep that policy.
-- Stored web blocks are replayed on every later turn, so `_attach_web_tools` declares the tools whenever `history_has_web_blocks(path)` is true even if the toggle is off, and then sets `tool_choice` to `{"type": "none"}`. Without this, toggling search off mid-thread, forking from a searched reply, and merge-back summaries on a searched side node all break. `summarize_side_node` uses the same path and never searches.
+- Stored web blocks are replayed on every later turn, so `_attach_web_tools` declares the tools whenever `history_has_web_blocks(path)` is true even if the toggle is off, and then sets `tool_choice` to `{"type": "none"}`. Without this, toggling search off mid-thread and forking from a searched reply both break.
 - `encrypted_content` and fetched page text are stripped from HTTP responses by `slim_message`, applied only to the `done` event and `GET /api/threads/{id}/messages`. Stored rows keep the full blocks, because the API requires encrypted content back unmodified. `slim_message` must never mutate its input.
 - A finished assistant message with web blocks shows a collapsible "Searched the web" row listing source links. During the stream, `web_activity` and `web_result` events show what is being searched or read. The row is `select-none` so selecting a source title does not trigger the fork popover.
 - The usage footer adds `searches` and `fetches` from `usage.server_tool_use`, shown only when non-zero. The four existing counters keep their order and wording.
@@ -85,3 +79,8 @@ Files: `frontend/src/models.ts`, `frontend/src/theme.ts`, the header in `fronten
 
 - The header picker chooses the model for that turn and remembers it in the browser. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5.
 - Dark mode follows the system until toggled; the choice is stored in `localStorage`.
+
+## Removed
+
+- Merge back is gone. There is no summary call, no merge route, and no control that copies a side node onto its parent. A side node's messages stay on that node. A stored row with `is_note` still renders as a note; nothing creates new notes.
+- Back to center is gone. The tree and the breadcrumb are how you leave a side node.

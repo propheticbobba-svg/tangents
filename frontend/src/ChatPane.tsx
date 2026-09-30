@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Breadcrumb } from "./Breadcrumb";
 import { Composer } from "./Composer";
-import { MergeBack } from "./MergeBack";
 import { MessageView, StreamingMessage } from "./Message";
 import { PinnedGoal } from "./PinnedGoal";
 import { SelectionPopover } from "./SelectionPopover";
@@ -32,10 +31,7 @@ export function ChatPane({
   onFork,
   onForkSelection,
   onSelectThread,
-  onBackToCenter,
   onSaveGoal,
-  onMerged,
-  model,
 }: {
   view: ThreadView | null;
   goal: string | null;
@@ -49,10 +45,7 @@ export function ChatPane({
   onFork: (messageId: string) => void;
   onForkSelection: (messageId: string, text: string, mode: "quote" | "explain") => void;
   onSelectThread: (threadId: string) => void;
-  onBackToCenter: () => void;
   onSaveGoal: (goal: string) => Promise<void>;
-  onMerged: (parentThreadId: string) => void;
-  model: string;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -85,7 +78,7 @@ export function ChatPane({
   return (
     <section className="flex min-w-0 flex-1 flex-col">
       <PinnedGoal goal={goal} onSave={onSaveGoal} />
-      <div className="relative flex items-center gap-3 border-b border-line px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-line px-4 py-2">
         {view && (
           <Breadcrumb
             ancestry={view.ancestry}
@@ -93,20 +86,6 @@ export function ChatPane({
             onSelect={onSelectThread}
             disabled={sending}
           />
-        )}
-        <div className="flex-1" />
-        {sideNode && view && (
-          <>
-            <button
-              type="button"
-              disabled={sending}
-              onClick={onBackToCenter}
-              className="rounded-md border border-line px-2 py-1 text-xs hover:border-accent disabled:opacity-40"
-            >
-              Back to center
-            </button>
-            <MergeBack threadId={view.thread.id} model={model} disabled={sending} onMerged={onMerged} />
-          </>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" onMouseUp={captureSelection}>

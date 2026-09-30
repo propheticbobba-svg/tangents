@@ -91,7 +91,7 @@ messages (
   content TEXT,                            -- JSON content blocks
   thread_id TEXT REFERENCES threads(id),
   created_at TEXT,
-  is_note INTEGER,                         -- 1 for a merge-back note
+  is_note INTEGER,                         -- older rows only; nothing new sets this
   usage TEXT                               -- JSON usage object, assistant rows only
 )
 ```
@@ -115,8 +115,6 @@ Stored messages are not edited or deleted, except the user message of a turn tha
 | `GET` | `/api/threads/{id}/messages` | | The thread's own messages, the fork-point message (`forked_from`), and `ancestry` from the center node to this thread. |
 | `POST` | `/api/threads` | `{fork_message_id}` | Creates a side node. The fork point must be an assistant message. |
 | `POST` | `/api/threads/{id}/messages` | `{content, model?, web?}` | SSE stream. Events: `user_message`, `delta` (`{text}`), `compaction` (`{content}`, when the API compacts), `web_activity`, `web_result`, `done` (the saved assistant message, including usage), `error`. `web` defaults to false. |
-| `POST` | `/api/threads/{id}/summary` | | One non-streaming call. Returns `{summary}` and saves nothing. |
-| `POST` | `/api/threads/{id}/merge` | `{summary}` | Appends a user-role note, `From side node: ...`, to the tip of the parent thread. `is_note` is set. Never automatic. |
 
 A failed chat turn emits `error` and deletes the user message it had just saved, so the tree does not keep a turn that never got a reply.
 
@@ -159,8 +157,6 @@ On startup, if `ANTHROPIC_MODEL` is not on the supported list, the server logs a
 
 A compaction block streams as one `compaction_delta` with the full summary, not token by token. Top-level `input_tokens` / `output_tokens` exclude the compaction iteration, so the footer adds `compaction in / out` from `usage.iterations` when a compaction entry is present.
 
-Merge-back summary calls do not enable compaction.
-
 ## Web search
 
 The header has a **Web** toggle next to the model picker. It is off by default and remembered in the browser. Turning it on does not search every message. Claude is told to look up facts that can change, and to skip the web when the conversation itself is enough.
@@ -179,8 +175,7 @@ Turning the toggle on or off changes the cached prefix, so the next turn in that
 
 - Left: the chat for the selected node. The pinned goal stays at the top of every node, truncated to two lines, expandable, and editable. Enter or blur saves; Esc cancels.
 - Right: the tree. One node per thread, edges from the parent thread to the side node. Children are ordered by the fork point's position in the parent, then by creation time. Hover a node for the fork-point snippet. Click to switch. The current node is highlighted.
-- Side nodes show a breadcrumb (`Center › … › this node`) and **Back to center**.
+- Side nodes show a breadcrumb (`Center › … › this node`). Click a title there, or a card in the tree, to switch nodes.
 - Every assistant message has a **Fork** button. Selecting text in an assistant message also offers **Fork from this** (opens the side node with the selection quoted in the composer) and **Explain this** (opens it and sends the quote plus "Explain this." immediately).
-- **Merge back** on a side node asks for a 1–3 sentence summary, lets you edit it, and appends it to the parent only if you confirm.
 - Replies stream. Markdown and code blocks are rendered. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
 - The header has a **Web** switch beside the model picker. Off by default. See [Web search](#web-search).

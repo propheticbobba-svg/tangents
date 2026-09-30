@@ -360,52 +360,6 @@ def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, mo
     assert tree["goal"] == "Edited goal"
 
 
-def test_merge_appends_a_labeled_note_to_the_parent_only(client, monkeypatch):
-    monkeypatch.setattr("app.main.get_context", walk)
-    monkeypatch.setattr(
-        "app.main.stream_chat",
-        lambda path, goal, model=None, web=False: iter(
-            [
-                {
-                    "type": "done",
-                    "content": [{"type": "text", "text": "assistant"}],
-                    "usage": {"input_tokens": 1, "output_tokens": 1},
-                }
-            ]
-        ),
-    )
-    _conversation_id, center_id = create_conversation(client)
-    client.post(f"/api/threads/{center_id}/messages", json={"content": "Main"})
-    assistant_id = client.get(f"/api/threads/{center_id}/messages").json()["messages"][1]["id"]
-    side = client.post("/api/threads", json={"fork_message_id": assistant_id}).json()
-
-    empty = client.post(f"/api/threads/{side['id']}/summary")
-    assert empty.status_code == 400
-
-    client.post(f"/api/threads/{side['id']}/messages", json={"content": "Look up suppliers"})
-    summary = client.post(f"/api/threads/{side['id']}/summary")
-    assert summary.status_code == 400
-    assert "ANTHROPIC_API_KEY" in summary.json()["detail"]
-
-    merged = client.post(
-        f"/api/threads/{side['id']}/merge",
-        json={"summary": "Suppliers are local."},
-    )
-    assert merged.status_code == 201
-    note = merged.json()
-    assert note["is_note"] is True
-    assert note["role"] == "user"
-    assert note["content"] == [{"type": "text", "text": "From side node: Suppliers are local."}]
-    assert note["thread_id"] == center_id
-    assert note["parent_id"] == assistant_id
-
-    side_messages = client.get(f"/api/threads/{side['id']}/messages").json()["messages"]
-    assert all(message["id"] != note["id"] for message in side_messages)
-
-    center_merge = client.post(f"/api/threads/{center_id}/merge", json={"summary": "nope"})
-    assert center_merge.status_code == 400
-
-
 def test_compaction_blocks_round_trip_without_being_rewritten(client):
     _conversation_id, center_id = create_conversation(client)
     blocks = [

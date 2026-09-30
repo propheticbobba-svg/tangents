@@ -64,19 +64,6 @@ export function createThread(forkMessageId: string): Promise<Thread> {
   });
 }
 
-export function summarizeThread(threadId: string, model: string): Promise<{ summary: string }> {
-  const params = new URLSearchParams({ model });
-  return request(`/api/threads/${threadId}/summary?${params}`, { method: "POST" });
-}
-
-export function mergeThread(threadId: string, summary: string): Promise<Message> {
-  return request(`/api/threads/${threadId}/merge`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ summary }),
-  });
-}
-
 function parseSse(block: string): ChatEvent | null {
   let event = "message";
   const dataLines: string[] = [];
