@@ -15,9 +15,11 @@ import {
 } from "./api";
 import { ChatPane } from "./ChatPane";
 import { DocumentsPanel } from "./DocumentsPanel";
+import { ResizeHandle } from "./ResizeHandle";
 import { TreeView } from "./TreeView";
 import { loadDocSearch, saveDocSearch } from "./docsearch";
 import { MODELS, loadModel, saveModel, type ModelId } from "./models";
+import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from "./sidebar";
 import { loadWebSearch, saveWebSearch } from "./websearch";
 import { useTheme } from "./theme";
 import {
@@ -67,6 +69,8 @@ export function App() {
   const [docError, setDocError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => clampSidebarWidth(loadSidebarWidth()));
+  const asideRef = useRef<HTMLElement>(null);
 
   const currentLabel =
     conversations.find((item) => item.id === conversationId)?.goal_snippet ||
@@ -102,6 +106,14 @@ export function App() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    function onResize() {
+      setSidebarWidth(clampSidebarWidth(loadSidebarWidth()));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     listConversations()
@@ -346,6 +358,15 @@ export function App() {
     }
   }
 
+  function previewSidebarWidth(width: number) {
+    if (asideRef.current) asideRef.current.style.width = `${width}px`;
+  }
+
+  function commitSidebarWidth(width: number) {
+    setSidebarWidth(width);
+    saveSidebarWidth(width);
+  }
+
   async function saveGoal(goal: string) {
     if (!conversationId) return;
     const updated = await updateGoal(conversationId, goal);
@@ -514,7 +535,12 @@ export function App() {
             onSelectThread={(id) => void selectThread(id)}
             onSaveGoal={saveGoal}
           />
-          <aside className="flex w-96 shrink-0 flex-col border-l border-line">
+          <aside
+            ref={asideRef}
+            style={{ width: sidebarWidth }}
+            className="relative flex shrink-0 flex-col border-l border-line"
+          >
+            <ResizeHandle width={sidebarWidth} onPreview={previewSidebarWidth} onCommit={commitSidebarWidth} />
             <DocumentsPanel
               documents={documents}
               disabled={sending}

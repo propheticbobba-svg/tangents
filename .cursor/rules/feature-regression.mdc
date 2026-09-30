@@ -41,6 +41,17 @@ Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/a
 - Side-node cards show Delete on hover; the center card does not. Clicking Delete does not switch nodes. `frontend/src/TreeView.test.tsx` covers both.
 - A side node shows the breadcrumb from center. Clicking a breadcrumb title or a tree card switches to that node. There is no Back to center button.
 
+## Sidebar width
+
+Files: `frontend/src/sidebar.ts`, `frontend/src/ResizeHandle.tsx`, the `<aside>` in `frontend/src/App.tsx`, the pane-width `fitView` effect in `frontend/src/TreeView.tsx`, `frontend/src/sidebar.test.ts`, `frontend/src/ResizeHandle.test.tsx`.
+
+- The sidebar (Documents and Tree) is resized by dragging its left edge. Dragging left widens it; the chat pane takes the rest because it is `flex-1 min-w-0`.
+- Width defaults to 384px, never goes below 280px, and never leaves the chat under 360px. It is stored in `localStorage` (`tangents-sidebar-width`). A window resize re-clamps from the stored value without overwriting it.
+- Dragging writes the width to the DOM on each move and commits state plus storage once on pointer up, so long chats do not re-render during a drag. While dragging, body text selection is off so the drag never opens the selection popover.
+- The handle is a focusable `role="separator"`: ArrowLeft/ArrowRight change it by 16px (64px with Shift). Double-click resets to 384px. It works while a reply streams.
+- The tree re-fits (`padding 0.25`, `maxZoom 1`) whenever its pane width changes.
+- Introduced on `resizable-tree`.
+
 ## Pinned goal
 
 Files: `frontend/src/PinnedGoal.tsx`, `update_goal` in `backend/app/db.py`, `PATCH /api/conversations/{id}`.
