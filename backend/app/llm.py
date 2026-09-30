@@ -32,6 +32,7 @@ import anthropic
 
 from app.config import KEY_MISSING, MODEL_MISSING, get_settings, model_supports_compaction
 from app.db import short_title
+from app.rag import DOCS_INSTRUCTION
 
 COMPACTION_BETA = "compact-2026-01-12"
 WEB_SEARCH_TOOL_TYPE = "web_search_20260318"
@@ -252,7 +253,11 @@ def _result_sources(block: Any) -> list[dict[str, str]]:
 
 
 def stream_chat(
-    path: list[dict], goal: str | None, model: str | None = None, web: bool = False
+    path: list[dict],
+    goal: str | None,
+    model: str | None = None,
+    web: bool = False,
+    docs: bool = False,
 ) -> Iterator[dict]:
     """Stream one assistant turn.
 
@@ -272,8 +277,13 @@ def stream_chat(
         "messages": messages,
     }
     _attach_web_tools(kwargs, path, web)
+    instructions = []
     if web:
-        kwargs["system"] = WEB_TURN_INSTRUCTION
+        instructions.append(WEB_TURN_INSTRUCTION)
+    if docs:
+        instructions.append(DOCS_INSTRUCTION)
+    if instructions:
+        kwargs["system"] = "\n\n".join(instructions)
     if _use_beta(path, compact):
         kwargs["betas"] = [COMPACTION_BETA]
         if compact:

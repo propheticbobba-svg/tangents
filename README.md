@@ -39,6 +39,9 @@ Copy `backend/.env.example` to `backend/.env`. The file is gitignored.
 | `WEB_FETCH_MAX_USES` | no | Cap on page fetches per request. Defaults to 5. Values under 1 refuse to start. |
 | `WEB_FETCH_MAX_CONTENT_TOKENS` | no | Approximate token cap for one fetched page. Defaults to 20000. Values under 1 refuse to start. |
 | `WEB_SEARCH_BLOCKED_DOMAINS` | no | Optional comma-separated domains that never appear in search results. |
+| `EMBED_MODEL` | no | Local embedding model. Defaults to `snowflake/snowflake-arctic-embed-m`. Changing it requires re-uploading documents. |
+| `RAG_TOP_K` | no | Passages attached to a Docs turn. Defaults to 5. Values under 1 refuse to start. |
+| `MAX_UPLOAD_MB` | no | Largest document upload. Defaults to 25. Values under 1 refuse to start. |
 
 The database is `backend/tangents.db`.
 
@@ -171,6 +174,12 @@ If a thread has already searched, later turns still declare the tools so those s
 
 Turning the toggle on or off changes the cached prefix, so the next turn in that thread is usually a cache miss. Turning it back restores the previous prefix.
 
+## Documents
+
+Each conversation has its own documents, listed in the sidebar above the tree. Upload accepts `.txt`, `.md`, `.markdown`, `.docx`, `.pdf`, `.pptx`, `.xlsx`, `.html`, `.htm`, and `.epub`.
+
+The header **Docs** switch sits next to **Web**. It is off by default and remembered in the browser, and it stays disabled until the conversation has a document. With it on, that turn searches the conversation's documents and saves the passages in the user message, ahead of the typed text. A fork from that reply still sees them. The chat shows a **Searched your documents** row on that message.
+
 ## UI
 
 - Left: the chat for the selected node. The pinned goal stays at the top of every node, truncated to two lines, expandable, and editable. Enter or blur saves; Esc cancels.
@@ -178,4 +187,4 @@ Turning the toggle on or off changes the cached prefix, so the next turn in that
 - Side nodes show a breadcrumb (`Center › … › this node`). Click a title there, or a card in the tree, to switch nodes.
 - Every assistant message has a **Fork** button. Selecting text in an assistant message also offers **Fork from this** (opens the side node with the selection quoted in the composer) and **Explain this** (opens it and sends the quote plus "Explain this." immediately).
 - Replies stream. Markdown and code blocks are rendered. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
-- The header has a **Web** switch beside the model picker. Off by default. See [Web search](#web-search).
+- The header has **Web** and **Docs** switches beside the model picker. Both off by default. See [Web search](#web-search) and [Documents](#documents).

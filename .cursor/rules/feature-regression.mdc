@@ -17,7 +17,7 @@ Files: `frontend/src/App.tsx`, `frontend/src/api.ts`, conversation routes in `ba
 
 - The header control lists chats newest first. Choosing a row opens that chat.
 - Each row has Delete. Confirm with the goal snippet, or "New conversation". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
-- `DELETE /api/conversations/{id}` returns 204, or 404. Threads and messages point at each other, so null `fork_message_id`, `parent_thread_id`, and `parent_id` before deleting messages, threads, then the conversation.
+- `DELETE /api/conversations/{id}` returns 204, or 404. Threads and messages point at each other, so null `fork_message_id`, `parent_thread_id`, and `parent_id` before deleting messages, threads, then the conversation. The conversation's chunks_fts, chunks, and documents rows are deleted before the conversation row.
 - New conversation creates an empty center node titled "Center".
 
 ## Turns, fork, and context
@@ -54,6 +54,7 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 
 - A chat turn streams `user_message`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
 - Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: last block of the inherited path, and last block of the new user message.
+- `stream_chat` joins the web and docs system instructions with a blank line when both apply. Either one alone is sent by itself. Neither means no system prompt.
 - Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button.
 - `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
 
@@ -61,7 +62,7 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 
 Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/app/llm.py`, the web settings in `backend/app/config.py`, chat routes and `slim_message` in `backend/app/main.py`, `frontend/src/websearch.ts`, `frontend/src/WebActivity.tsx`, `frontend/src/Message.tsx`, the header in `frontend/src/App.tsx`.
 
-- The header has a Web toggle next to the model picker. It is per turn, defaults to off, and is remembered in `localStorage` under `tangents-web-search`. It sits outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work.
+- The header has Web and Docs toggles next to the model picker. Each is per turn, defaults to off, and is remembered in `localStorage` (`tangents-web-search`, `tangents-doc-search`). Both sit outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work. Docs is disabled while the conversation has no documents.
 - Search is never forced. With the toggle on, `tool_choice` stays unset and a system instruction tells Claude to look up facts that can change, recent events, specific pages, and anything it is not sure is still true, and not to answer those from memory. A turn that does not search is still correct when the conversation itself is enough. The instruction is omitted when the toggle is off.
 - Both tools are Anthropic server tools (`web_search_20260318`, `web_fetch_20260318`), so a turn that searches is still one request and one saved assistant message. No `tool_use` or `tool_result` rows ever enter the tree. Do not replace these with a client-side search library without redesigning how tool rows live in a forkable tree. Both tools set `allowed_callers` to `["direct"]`. The SDK default includes code-execution callers, and Haiku 4.5 rejects that.
 - `web_fetch` may only fetch URLs the user pasted or that `web_search` returned: `url_sources` sets `user_input` to `all`, `server_tool_results` to `only` naming `web_search`, and `client_tool_results` to `none`. Keep that policy.
@@ -91,6 +92,21 @@ Files: `delete_thread` in `backend/app/db.py`, `DELETE /api/threads/{id}` in `ba
 - Clear `fork_message_id`, `parent_thread_id`, and `parent_id` inside the subtree before deleting messages, then threads. Nothing outside the subtree changes; the parent's fork message stays.
 - Confirm names the node and how many side nodes go with it. If the open node was removed, open the deleted node's parent; otherwise stay where you are.
 - Delete is disabled while a reply streams. A turn whose node is deleted mid-stream rolls back through the normal error path.
+
+## Document retrieval
+
+Files: `backend/app/rag.py`, the `documents` / `chunks` / `chunks_fts` schema and `delete_conversation` in `backend/app/db.py`, `EMBED_MODEL`, `RAG_TOP_K`, and `MAX_UPLOAD_MB` in `backend/app/config.py`, document routes in `backend/app/main.py`, `frontend/src/DocumentsPanel.tsx`, `frontend/src/DocPassages.tsx`, `frontend/src/docsearch.ts`, the header and sidebar in `frontend/src/App.tsx`, `backend/tests/test_rag.py`.
+
+- Documents belong to one conversation. `search` only returns chunks whose `conversation_id` matches. Every node in that conversation can search them.
+- `.txt`, `.md`, `.markdown` are decoded as UTF-8. `.docx`, `.pdf`, `.pptx`, `.xlsx`, `.html`, `.htm`, `.epub` go through markitdown. Anything else, or a file with no text, raises `UnsupportedDocument`.
+- Chunks split on Markdown headings first, then a word window (default 180 words, 30 overlap). Each chunk keeps its heading path joined with " > ".
+- Embeddings are local (`fastembed`, default `snowflake/snowflake-arctic-embed-m`), normalized float32, cached under `backend/.cache/`. Changing `EMBED_MODEL` requires re-ingesting.
+- Queries get the model's retrieval prefix from `QUERY_PREFIXES`; passages get none. A model not in the map gets no prefix.
+- `search` modes are `hybrid` (default), `vector`, `keyword`. Hybrid merges vector cosine and FTS5 bm25 with reciprocal rank fusion (k=60). User text reaches FTS5 only as quoted words joined by OR.
+- The sidebar Documents panel lists a conversation's files, uploads them, and deletes one at a time. `POST /api/conversations/{id}/documents` returns 201, 404 for an unknown conversation, 400 for an unsupported file, and 413 over `MAX_UPLOAD_MB` (default 25, refuses values under 1). `GET` returns the list or 404. `DELETE /api/documents/{id}` returns 204, or 404.
+- A Docs toggle, off by default, asks a turn to search. With it on and at least one document, the saved user message is `search_result` blocks (citations enabled) followed by the typed text. Those blocks are never `tool_use` / `tool_result` rows. Forks inherit them because they are on the parent path. The goal and the node title still come from the typed text only. With the toggle off, or with no documents, the user row is text only.
+- A user message with those blocks shows a collapsible "Searched your documents" row. It is `select-none`.
+- Tests never download the model; they use a fake embedder.
 
 ## Removed
 

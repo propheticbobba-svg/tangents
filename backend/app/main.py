@@ -9,14 +9,15 @@ import asyncio
 import json
 import logging
 import threading
+from pathlib import Path
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.config import load_settings
+from app.config import get_settings, load_settings
 from app.context import get_context
 from app.db import (
     center_thread,
@@ -43,6 +44,14 @@ from app.db import (
     update_goal,
 )
 from app.llm import LLMError, stream_chat, suggest_title
+from app.rag import (
+    UnsupportedDocument,
+    delete_document,
+    ingest,
+    list_documents,
+    search,
+    to_search_result_blocks,
+)
 
 logger = logging.getLogger("tangents")
 if not logger.handlers:
@@ -84,6 +93,7 @@ class NewMessage(BaseModel):
     content: str = Field(min_length=1)
     model: str | None = None
     web: bool = False
+    docs: bool = False
 
 
 class NewThread(BaseModel):
@@ -201,6 +211,49 @@ def get_tree(conversation_id: str) -> dict:
         conn.close()
 
 
+@app.get("/api/conversations/{conversation_id}/documents")
+def get_documents(conversation_id: str) -> list[dict]:
+    conn = connect()
+    try:
+        if get_conversation(conn, conversation_id) is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return list_documents(conn, conversation_id)
+    finally:
+        conn.close()
+
+
+@app.post("/api/conversations/{conversation_id}/documents", status_code=201)
+def post_document(conversation_id: str, file: UploadFile = File()) -> dict:
+    filename = Path(file.filename or "upload").name
+    data = file.file.read()
+    limit = get_settings().max_upload_mb * 1024 * 1024
+    if len(data) > limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is larger than {get_settings().max_upload_mb} MB",
+        )
+    conn = connect()
+    try:
+        if get_conversation(conn, conversation_id) is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        try:
+            return ingest(conn, conversation_id, filename, data)
+        except UnsupportedDocument as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.delete("/api/documents/{document_id}", status_code=204)
+def remove_document(document_id: str) -> None:
+    conn = connect()
+    try:
+        if not delete_document(conn, document_id):
+            raise HTTPException(status_code=404, detail="Document not found")
+    finally:
+        conn.close()
+
+
 @app.get("/api/threads/{thread_id}/messages")
 def get_messages(thread_id: str) -> dict:
     conn = connect()
@@ -264,7 +317,7 @@ def _name_first_turn(conn, thread_id: str, content: str, undo: dict, reply_text:
             logger.exception("could not store the fallback title")
 
 
-def _chat_events(thread_id: str, content: str, model: str | None, web: bool) -> Iterator[str]:
+def _chat_events(thread_id: str, content: str, model: str | None, web: bool, docs: bool) -> Iterator[str]:
     conn = connect()
     message_id: str | None = None
     undo: dict = {}
@@ -274,12 +327,20 @@ def _chat_events(thread_id: str, content: str, model: str | None, web: bool) -> 
             yield _sse("error", {"error": "Thread not found"})
             return
         parent_id = next_parent_id(conn, thread)
+        blocks: list[dict] = []
+        if docs:
+            has_chunks = conn.execute(
+                "SELECT 1 FROM chunks WHERE conversation_id = ? LIMIT 1",
+                (thread["conversation_id"],),
+            ).fetchone()
+            if has_chunks:
+                blocks = to_search_result_blocks(search(conn, thread["conversation_id"], content))
         user_message = insert_message(
             conn,
             thread_id=thread_id,
             parent_id=parent_id,
             role="user",
-            content=[{"type": "text", "text": content}],
+            content=[*blocks, {"type": "text", "text": content}],
         )
         message_id = user_message["id"]
         undo = note_user_message(conn, thread, content)
@@ -302,7 +363,7 @@ def _chat_events(thread_id: str, content: str, model: str | None, web: bool) -> 
 
         try:
             done: dict | None = None
-            for event in stream_chat(path, goal, model, web=web):
+            for event in stream_chat(path, goal, model, web=web, docs=bool(blocks)):
                 if event["type"] == "delta":
                     yield _sse("delta", {"text": event["text"]})
                 elif event["type"] == "compaction":
@@ -357,7 +418,7 @@ async def post_message(thread_id: str, body: NewMessage) -> StreamingResponse:
 
     def worker() -> None:
         try:
-            for chunk in _chat_events(thread_id, content, body.model, body.web):
+            for chunk in _chat_events(thread_id, content, body.model, body.web, body.docs):
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
         except Exception as exc:
             logger.exception("chat stream failed")

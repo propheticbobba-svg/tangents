@@ -7,6 +7,20 @@ export type ContentBlock = {
   name?: string;
   url?: string;
   title?: string;
+  source?: string;
+};
+
+export type DocumentInfo = {
+  id: string;
+  filename: string;
+  title: string;
+  created_at: string;
+  chunk_count: number;
+};
+
+export type DocPassage = {
+  title: string;
+  text: string;
 };
 
 export type UsageIteration = {
@@ -83,6 +97,19 @@ export function messageText(content: ContentBlock[]): string {
     .filter((block) => block.type === "text" && block.text)
     .map((block) => block.text as string)
     .join("\n\n");
+}
+
+export function docPassages(content: ContentBlock[]): DocPassage[] {
+  const passages: DocPassage[] = [];
+  for (const block of content) {
+    if (block.type !== "search_result" || !Array.isArray(block.content)) continue;
+    const text = (block.content as ContentBlock[])
+      .filter((item) => item?.type === "text" && item.text)
+      .map((item) => item.text as string)
+      .join("\n\n");
+    passages.push({ title: block.title || "Document", text });
+  }
+  return passages;
 }
 
 export function compactionSummaries(content: ContentBlock[]): string[] {

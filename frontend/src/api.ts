@@ -1,4 +1,4 @@
-import type { Conversation, Message, Thread, ThreadView, Tree, WebSource } from "./types";
+import type { Conversation, DocumentInfo, Message, Thread, ThreadView, Tree, WebSource } from "./types";
 
 export type ChatEvent =
   | { event: "user_message"; data: Message }
@@ -57,6 +57,21 @@ export function getTree(id: string): Promise<Tree> {
   return request(`/api/conversations/${id}/tree`);
 }
 
+export function listDocuments(conversationId: string): Promise<DocumentInfo[]> {
+  return request(`/api/conversations/${conversationId}/documents`);
+}
+
+export function uploadDocument(conversationId: string, file: File): Promise<DocumentInfo> {
+  const body = new FormData();
+  body.append("file", file);
+  return request(`/api/conversations/${conversationId}/documents`, { method: "POST", body });
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  const response = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(await errorMessage(response));
+}
+
 export function getMessages(threadId: string): Promise<ThreadView> {
   return request(`/api/threads/${threadId}/messages`);
 }
@@ -85,12 +100,13 @@ export async function streamMessage(
   content: string,
   model: string,
   web: boolean,
+  docs: boolean,
   onEvent: (event: ChatEvent) => void,
 ): Promise<void> {
   const response = await fetch(`/api/threads/${threadId}/messages`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ content, model, web }),
+    body: JSON.stringify({ content, model, web, docs }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await errorMessage(response));

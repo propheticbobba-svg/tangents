@@ -4,6 +4,7 @@ import pytest
 
 from app.config import load_settings, model_supports_compaction
 from app.db import short_title
+from app.rag import DOCS_INSTRUCTION
 from app.llm import (
     TITLE_INPUT_CHARS,
     TITLE_INSTRUCTION,
@@ -350,6 +351,13 @@ def test_web_turn_tells_the_model_to_look_up_current_facts(monkeypatch):
     list(stream_chat(path, None, "claude-haiku-4-5", web=False))
     assert "system" not in messages.kwargs
     assert "tools" not in messages.kwargs
+
+    list(stream_chat(path, None, "claude-haiku-4-5", docs=True))
+    assert messages.kwargs["system"] == DOCS_INSTRUCTION
+    assert "tools" not in messages.kwargs
+
+    list(stream_chat(path, None, "claude-haiku-4-5", web=True, docs=True))
+    assert messages.kwargs["system"] == f"{WEB_TURN_INSTRUCTION}\n\n{DOCS_INSTRUCTION}"
 
 
 def test_web_activity_survives_malformed_json():

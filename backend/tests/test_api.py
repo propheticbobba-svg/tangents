@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.context import get_context
 from app.db import connect, insert_message, messages_in_conversation, short_title
 from app.llm import LLMError
+from tests.test_rag import FakeEmbedder
 
 
 def walk(messages, message_id):
@@ -41,6 +42,22 @@ def client(tmp_path, monkeypatch):
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def small_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("TANGENTS_DB", str(tmp_path / "tangents.db"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "1")
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def use_fake_embedder(monkeypatch):
+    monkeypatch.setattr("app.rag.get_embedder", lambda: FakeEmbedder())
 
 
 def parse_sse(body: str):
@@ -262,7 +279,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
         seen["model"] = model
         yield {
             "type": "done",
@@ -285,7 +302,7 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
         seen["ids"] = [message["id"] for message in path]
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -330,7 +347,7 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
         text = "answer " + path[-1]["content"][0]["text"]
         yield {"type": "delta", "text": text}
         yield {
@@ -386,7 +403,7 @@ def test_title_falls_back_and_a_later_turn_keeps_it(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None, web=False: iter(
+        lambda path, goal, model=None, web=False, docs=False: iter(
             [
                 {
                     "type": "done",
@@ -428,7 +445,7 @@ def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, mo
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None, web=False: iter(
+        lambda path, goal, model=None, web=False, docs=False: iter(
             [
                 {
                     "type": "done",
@@ -480,7 +497,7 @@ def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
         seen["web"] = web
         yield {
             "type": "done",
@@ -566,7 +583,7 @@ def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
         yield {
             "type": "done",
             "content": [
@@ -594,3 +611,136 @@ def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
     messages = client.get(f"/api/threads/{center_id}/messages").json()["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[0]["content"][0]["text"] == "What happened today"
+
+
+WALLS = b"# Walls\n\n## Names\nWall Maria, Wall Rose, and Wall Sina.\n"
+
+
+def test_upload_lists_and_deletes_a_document(client, monkeypatch):
+    use_fake_embedder(monkeypatch)
+    conversation_id, _center = create_conversation(client)
+    created = client.post(
+        f"/api/conversations/{conversation_id}/documents",
+        files={"file": ("walls.txt", WALLS, "text/plain")},
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["filename"] == "walls.txt"
+    assert body["chunk_count"] >= 1
+
+    listed = client.get(f"/api/conversations/{conversation_id}/documents")
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [body["id"]]
+
+    deleted = client.delete(f"/api/documents/{body['id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/api/conversations/{conversation_id}/documents").json() == []
+    assert client.delete(f"/api/documents/{body['id']}").status_code == 404
+
+
+def test_upload_rejects_unknown_conversation_bad_type_and_oversize(client, small_client, monkeypatch):
+    use_fake_embedder(monkeypatch)
+    missing = client.post(
+        "/api/conversations/missing/documents",
+        files={"file": ("walls.txt", WALLS, "text/plain")},
+    )
+    assert missing.status_code == 404
+
+    conversation_id, _center = create_conversation(client)
+    rejected = client.post(
+        f"/api/conversations/{conversation_id}/documents",
+        files={"file": ("a.png", b"not an image", "application/octet-stream")},
+    )
+    assert rejected.status_code == 400
+
+    small_id, _center = create_conversation(small_client)
+    oversized = small_client.post(
+        f"/api/conversations/{small_id}/documents",
+        files={"file": ("big.txt", b"x" * (1024 * 1024 + 1), "text/plain")},
+    )
+    assert oversized.status_code == 413
+
+
+def _reply_stream(seen):
+    def fake_stream(path, goal, model=None, web=False, docs=False):
+        seen["docs"] = docs
+        seen["goal"] = goal
+        seen["blocks"] = path[-1]["content"]
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": "From the journals."}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    return fake_stream
+
+
+def test_docs_turn_stores_passages_and_keeps_the_typed_goal(client, monkeypatch):
+    use_fake_embedder(monkeypatch)
+    monkeypatch.setattr("app.main.get_context", walk)
+    monkeypatch.setattr("app.main.suggest_title", haiku_title)
+    seen = {}
+    monkeypatch.setattr("app.main.stream_chat", _reply_stream(seen))
+    conversation_id, center_id = create_conversation(client)
+    uploaded = client.post(
+        f"/api/conversations/{conversation_id}/documents",
+        files={"file": ("walls.txt", WALLS, "text/plain")},
+    )
+    assert uploaded.status_code == 201
+
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Where is Sina?", "docs": True},
+    )
+    assert parse_sse(response.text)[-1][0] == "done"
+    assert seen["docs"] is True
+    assert seen["goal"] == "Where is Sina?"
+    assert seen["blocks"][-1] == {"type": "text", "text": "Where is Sina?"}
+    assert seen["blocks"][0]["type"] == "search_result"
+    assert client.get(f"/api/conversations/{conversation_id}/tree").json()["goal"] == "Where is Sina?"
+
+
+def test_docs_without_documents_sends_text_only(client, monkeypatch):
+    use_fake_embedder(monkeypatch)
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+    monkeypatch.setattr("app.main.stream_chat", _reply_stream(seen))
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Where is Sina?", "docs": True},
+    )
+    assert parse_sse(response.text)[-1][0] == "done"
+    assert seen["docs"] is False
+    assert seen["blocks"] == [{"type": "text", "text": "Where is Sina?"}]
+
+
+def test_docs_defaults_to_false(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+    monkeypatch.setattr("app.main.stream_chat", _reply_stream(seen))
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(f"/api/threads/{center_id}/messages", json={"content": "Hello"})
+    assert parse_sse(response.text)[-1][0] == "done"
+    assert seen["docs"] is False
+
+
+def test_failed_docs_turn_drops_the_passages(client, monkeypatch):
+    use_fake_embedder(monkeypatch)
+    monkeypatch.setattr("app.main.get_context", walk)
+
+    def fake_stream(path, goal, model=None, web=False, docs=False):
+        raise LLMError("nope")
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    conversation_id, center_id = create_conversation(client)
+    client.post(
+        f"/api/conversations/{conversation_id}/documents",
+        files={"file": ("walls.txt", WALLS, "text/plain")},
+    )
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Where is Sina?", "docs": True},
+    )
+    assert parse_sse(response.text)[-1][0] == "error"
+    assert client.get(f"/api/threads/{center_id}/messages").json()["messages"] == []

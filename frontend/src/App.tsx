@@ -3,19 +3,32 @@ import {
   createConversation,
   createThread,
   deleteConversation,
+  deleteDocument,
   deleteThread,
   getMessages,
   getTree,
   listConversations,
+  listDocuments,
   streamMessage,
   updateGoal,
+  uploadDocument,
 } from "./api";
 import { ChatPane } from "./ChatPane";
+import { DocumentsPanel } from "./DocumentsPanel";
 import { TreeView } from "./TreeView";
+import { loadDocSearch, saveDocSearch } from "./docsearch";
 import { MODELS, loadModel, saveModel, type ModelId } from "./models";
 import { loadWebSearch, saveWebSearch } from "./websearch";
 import { useTheme } from "./theme";
-import { quoteText, type Conversation, type StreamingTurn, type Thread, type ThreadView, type Tree } from "./types";
+import {
+  quoteText,
+  type Conversation,
+  type DocumentInfo,
+  type StreamingTurn,
+  type Thread,
+  type ThreadView,
+  type Tree,
+} from "./types";
 
 function subtreeIds(threads: Thread[], rootId: string): Set<string> {
   const ids = new Set<string>([rootId]);
@@ -48,6 +61,10 @@ export function App() {
   const [booting, setBooting] = useState(true);
   const [model, setModel] = useState<ModelId>(loadModel);
   const [web, setWeb] = useState<boolean>(loadWebSearch);
+  const [docs, setDocs] = useState<boolean>(loadDocSearch);
+  const [documents, setDocuments] = useState<DocumentInfo[]>([]);
+  const [indexing, setIndexing] = useState<string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -56,9 +73,11 @@ export function App() {
     (conversationId ? "New conversation" : "No conversations");
 
   async function openConversation(id: string, preferredThreadId?: string) {
-    const nextTree = await getTree(id);
+    const [nextTree, nextDocuments] = await Promise.all([getTree(id), listDocuments(id)]);
     setConversationId(id);
     setTree(nextTree);
+    setDocuments(nextDocuments);
+    setDocError(null);
     const center = nextTree.threads.find((thread) => thread.parent_thread_id === null);
     const nextThread =
       preferredThreadId && nextTree.threads.some((thread) => thread.id === preferredThreadId)
@@ -137,6 +156,7 @@ export function App() {
       } else {
         setConversationId(null);
         setTree(null);
+        setDocuments([]);
         setThreadId(null);
         setView(null);
         setMenuOpen(false);
@@ -203,7 +223,7 @@ export function App() {
     setStreaming({ text: "", summaries: [], activity: [] });
     let failed = false;
     try {
-      await streamMessage(targetThreadId, content, model, web, (event) => {
+      await streamMessage(targetThreadId, content, model, web, docs && documents.length > 0, (event) => {
         if (event.event === "user_message") {
           setView((current) =>
             current && current.thread.id === targetThreadId
@@ -292,6 +312,37 @@ export function App() {
       setError(err instanceof Error ? err.message : "Could not fork");
     } finally {
       if (!handedOff) setSending(false);
+    }
+  }
+
+  async function uploadFiles(files: File[]) {
+    if (!conversationId || sending) return;
+    setDocError(null);
+    for (const file of files) {
+      setIndexing(file.name);
+      try {
+        await uploadDocument(conversationId, file);
+      } catch (err) {
+        setDocError(err instanceof Error ? err.message : "Could not add that document");
+      }
+    }
+    setIndexing(null);
+    try {
+      setDocuments(await listDocuments(conversationId));
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not refresh documents");
+    }
+  }
+
+  async function removeDocument(document: DocumentInfo) {
+    if (!conversationId || sending || indexing) return;
+    if (!window.confirm(`Delete “${document.filename}”?`)) return;
+    setDocError(null);
+    try {
+      await deleteDocument(document.id);
+      setDocuments(await listDocuments(conversationId));
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not delete that document");
     }
   }
 
@@ -401,6 +452,23 @@ export function App() {
         >
           Web
         </button>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={docs}
+          aria-label="Search this conversation's documents"
+          disabled={sending || documents.length === 0}
+          onClick={() => {
+            const next = !docs;
+            setDocs(next);
+            saveDocSearch(next);
+          }}
+          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
+            docs ? "border-accent text-accent" : "border-line text-muted"
+          }`}
+        >
+          Docs
+        </button>
         <div className="flex-1" />
         <button
           type="button"
@@ -447,6 +515,14 @@ export function App() {
             onSaveGoal={saveGoal}
           />
           <aside className="flex w-96 shrink-0 flex-col border-l border-line">
+            <DocumentsPanel
+              documents={documents}
+              disabled={sending}
+              indexing={indexing}
+              error={docError}
+              onUpload={(files) => void uploadFiles(files)}
+              onDelete={(document) => void removeDocument(document)}
+            />
             <div className="border-b border-line px-3 py-2 text-[10px] uppercase tracking-wide text-muted">
               Tree
             </div>
