@@ -1,9 +1,11 @@
-import type { Conversation, Message, Thread, ThreadView, Tree } from "./types";
+import type { Conversation, Message, Thread, ThreadView, Tree, WebSource } from "./types";
 
 export type ChatEvent =
   | { event: "user_message"; data: Message }
   | { event: "delta"; data: { text: string } }
   | { event: "compaction"; data: { content: string } }
+  | { event: "web_activity"; data: { tool: string; query: string; url: string } }
+  | { event: "web_result"; data: { tool: string; sources: WebSource[] } }
   | { event: "done"; data: Message }
   | { event: "error"; data: { error: string } };
 
@@ -90,12 +92,13 @@ export async function streamMessage(
   threadId: string,
   content: string,
   model: string,
+  web: boolean,
   onEvent: (event: ChatEvent) => void,
 ): Promise<void> {
   const response = await fetch(`/api/threads/${threadId}/messages`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ content, model }),
+    body: JSON.stringify({ content, model, web }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await errorMessage(response));

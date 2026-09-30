@@ -34,6 +34,17 @@ KEY_MISSING = "ANTHROPIC_API_KEY is not set in backend/.env"
 MODEL_MISSING = "Choose a model in the header, or set ANTHROPIC_MODEL in backend/.env"
 
 
+def _positive_int_env(name: str, default: str) -> int:
+    raw = os.environ.get(name, default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
+    if value < 1:
+        raise RuntimeError(f"{name} must be at least 1")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     api_key: str | None
@@ -41,6 +52,10 @@ class Settings:
     max_tokens: int
     cache_ttl: str
     compact_trigger_tokens: int
+    web_search_max_uses: int
+    web_fetch_max_uses: int
+    web_fetch_max_content_tokens: int
+    web_search_blocked_domains: tuple[str, ...]
 
     @property
     def compaction_supported(self) -> bool:
@@ -89,6 +104,15 @@ def load_settings() -> Settings:
     if max_tokens < 1:
         raise RuntimeError("MAX_TOKENS must be at least 1")
 
+    web_search_max_uses = _positive_int_env("WEB_SEARCH_MAX_USES", "5")
+    web_fetch_max_uses = _positive_int_env("WEB_FETCH_MAX_USES", "5")
+    web_fetch_max_content_tokens = _positive_int_env("WEB_FETCH_MAX_CONTENT_TOKENS", "20000")
+    web_search_blocked_domains = tuple(
+        item.strip()
+        for item in os.environ.get("WEB_SEARCH_BLOCKED_DOMAINS", "").split(",")
+        if item.strip()
+    )
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
     model = os.environ.get("ANTHROPIC_MODEL", "").strip() or None
     return Settings(
@@ -97,6 +121,10 @@ def load_settings() -> Settings:
         max_tokens=max_tokens,
         cache_ttl=cache_ttl,
         compact_trigger_tokens=compact_trigger_tokens,
+        web_search_max_uses=web_search_max_uses,
+        web_fetch_max_uses=web_fetch_max_uses,
+        web_fetch_max_content_tokens=web_fetch_max_content_tokens,
+        web_search_blocked_domains=web_search_blocked_domains,
     )
 
 

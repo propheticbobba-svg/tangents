@@ -12,6 +12,7 @@ import {
 import { ChatPane } from "./ChatPane";
 import { TreeView } from "./TreeView";
 import { MODELS, loadModel, saveModel, type ModelId } from "./models";
+import { loadWebSearch, saveWebSearch } from "./websearch";
 import { useTheme } from "./theme";
 import { quoteText, type Conversation, type StreamingTurn, type ThreadView, type Tree } from "./types";
 
@@ -29,6 +30,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [model, setModel] = useState<ModelId>(loadModel);
+  const [web, setWeb] = useState<boolean>(loadWebSearch);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -154,10 +156,10 @@ export function App() {
     setSending(true);
     setError(null);
     setDraft("");
-    setStreaming({ text: "", summaries: [] });
+    setStreaming({ text: "", summaries: [], activity: [] });
     let failed = false;
     try {
-      await streamMessage(targetThreadId, content, model, (event) => {
+      await streamMessage(targetThreadId, content, model, web, (event) => {
         if (event.event === "user_message") {
           setView((current) =>
             current && current.thread.id === targetThreadId
@@ -168,11 +170,32 @@ export function App() {
           setStreaming((current) => ({
             text: (current?.text ?? "") + event.data.text,
             summaries: current?.summaries ?? [],
+            activity: current?.activity ?? [],
           }));
         } else if (event.event === "compaction") {
           setStreaming((current) => ({
             text: current?.text ?? "",
             summaries: [...(current?.summaries ?? []), event.data.content],
+            activity: current?.activity ?? [],
+          }));
+        } else if (event.event === "web_activity") {
+          const label =
+            event.data.tool === "web_fetch"
+              ? `Reading ${event.data.url}`
+              : `Searching for ${event.data.query}`;
+          setStreaming((current) => ({
+            text: current?.text ?? "",
+            summaries: current?.summaries ?? [],
+            activity: [...(current?.activity ?? []), label],
+          }));
+        } else if (event.event === "web_result") {
+          setStreaming((current) => ({
+            text: current?.text ?? "",
+            summaries: current?.summaries ?? [],
+            activity: [
+              ...(current?.activity ?? []),
+              `Found ${event.data.sources.length} source${event.data.sources.length === 1 ? "" : "s"}`,
+            ],
           }));
         } else if (event.event === "error") {
           failed = true;
@@ -324,6 +347,23 @@ export function App() {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={web}
+          aria-label="Search the web"
+          disabled={sending}
+          onClick={() => {
+            const next = !web;
+            setWeb(next);
+            saveWebSearch(next);
+          }}
+          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
+            web ? "border-accent text-accent" : "border-line text-muted"
+          }`}
+        >
+          Web
+        </button>
         <div className="flex-1" />
         <button
           type="button"

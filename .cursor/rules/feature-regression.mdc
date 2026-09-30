@@ -29,13 +29,13 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 - A failed turn deletes the user message it just saved and does not keep a goal or title from that turn.
 - Stored message content is raw Anthropic blocks and is not edited. The only message delete is that failed-turn rollback, plus deleting a whole conversation.
 - Every assistant message has Fork. A text selection offers Fork from this (quote in the composer) and Explain this (quote plus "Explain this." sent immediately).
-- Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). That behavior is on branch `sticky-fork-button` and is not on `main`. `frontend/src/Message.test.tsx` covers it.
+- Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). Introduced on `sticky-fork-button`, now on `main`. `frontend/src/Message.test.tsx` covers it: the button keeps `sticky` and `bottom-3`, its nearest non-`contents` ancestor is the `<article>`, and it is never inside a `<p>`. Keep the `pointer-events-none contents` wrapper.
 
 ## Tree and node titles
 
 Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/app/db.py`, `_name_first_turn` in `backend/app/main.py`, `frontend/src/TreeView.tsx`, `frontend/src/Breadcrumb.tsx`.
 
-- After a node's first reply succeeds, its title is a 2–6 word name from Claude Haiku 4.5, using the first 400 characters of that node's first user message. The assistant reply is not sent. A failed, empty, or cut-off title call uses the first 40 characters. Later messages do not rename the node. Introduced on `haiku-node-titles`.
+- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. Later messages do not rename the node. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
 - A side node shows the breadcrumb from center and Back to center.
 
@@ -56,10 +56,28 @@ Files: `frontend/src/MergeBack.tsx`, summary and merge routes in `backend/app/ma
 
 Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDivider.tsx`, `frontend/src/UsageFooter.tsx`.
 
-- A chat turn streams `user_message`, `delta`, `compaction`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
+- A chat turn streams `user_message`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
 - Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: last block of the inherited path, and last block of the new user message.
 - Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button. Merge-back calls do not compact.
 - `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
+
+## Web search and fetch
+
+Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/app/llm.py`, the web settings in `backend/app/config.py`, chat routes and `slim_message` in `backend/app/main.py`, `frontend/src/websearch.ts`, `frontend/src/WebActivity.tsx`, `frontend/src/Message.tsx`, the header in `frontend/src/App.tsx`.
+
+- The header has a Web toggle next to the model picker. It is per turn, defaults to off, and is remembered in `localStorage` under `tangents-web-search`. It sits outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work.
+- Search is never forced. With the toggle on, `tool_choice` stays unset and a system instruction tells Claude to look up facts that can change, recent events, specific pages, and anything it is not sure is still true, and not to answer those from memory. A turn that does not search is still correct when the conversation itself is enough. The instruction is omitted when the toggle is off.
+- Both tools are Anthropic server tools (`web_search_20260318`, `web_fetch_20260318`), so a turn that searches is still one request and one saved assistant message. No `tool_use` or `tool_result` rows ever enter the tree. Do not replace these with a client-side search library without redesigning how tool rows live in a forkable tree. Both tools set `allowed_callers` to `["direct"]`. The SDK default includes code-execution callers, and Haiku 4.5 rejects that.
+- `web_fetch` may only fetch URLs the user pasted or that `web_search` returned: `url_sources` sets `user_input` to `all`, `server_tool_results` to `only` naming `web_search`, and `client_tool_results` to `none`. Keep that policy.
+- Stored web blocks are replayed on every later turn, so `_attach_web_tools` declares the tools whenever `history_has_web_blocks(path)` is true even if the toggle is off, and then sets `tool_choice` to `{"type": "none"}`. Without this, toggling search off mid-thread, forking from a searched reply, and merge-back summaries on a searched side node all break. `summarize_side_node` uses the same path and never searches.
+- `encrypted_content` and fetched page text are stripped from HTTP responses by `slim_message`, applied only to the `done` event and `GET /api/threads/{id}/messages`. Stored rows keep the full blocks, because the API requires encrypted content back unmodified. `slim_message` must never mutate its input.
+- A finished assistant message with web blocks shows a collapsible "Searched the web" row listing source links. During the stream, `web_activity` and `web_result` events show what is being searched or read. The row is `select-none` so selecting a source title does not trigger the fork popover.
+- The usage footer adds `searches` and `fetches` from `usage.server_tool_use`, shown only when non-zero. The four existing counters keep their order and wording.
+- Tool-level failures (`too_many_requests`, `url_not_allowed`, `max_uses_exceeded`, `url_not_in_prior_context`) come back as error blocks inside a result block, so the turn still succeeds and saves. Only a hard API error rolls the turn back.
+- `WEB_SEARCH_MAX_USES` and `WEB_FETCH_MAX_USES` default to 5 and refuse values under 1. `WEB_FETCH_MAX_CONTENT_TOKENS` defaults to 20000. `WEB_SEARCH_BLOCKED_DOMAINS` is an optional comma-separated list. The API key still stays on the server; the browser sends only a boolean.
+- Cache note: tool definitions sit ahead of the messages in the cached prefix, so flipping the toggle mid-conversation costs one cache miss on the next turn. That is expected, not a bug.
+- A searched reply can establish a fact the title model does not know. The node title is chosen in the same turn as that reply, and it must agree with the reply. See Tree and node titles. Leaving the title call on the user message alone will name the node from memory and contradict the answer.
+- Introduced on `main`.
 
 ## Model and theme
 

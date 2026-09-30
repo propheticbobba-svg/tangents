@@ -10,10 +10,20 @@ from app.llm import (
     TITLE_MAX_CHARS,
     TITLE_MAX_TOKENS,
     TITLE_MODEL,
+    WEB_BLOCK_TYPES,
+    WEB_FETCH_TOOL_TYPE,
+    WEB_SEARCH_TOOL_TYPE,
+    WEB_TURN_INSTRUCTION,
+    _attach_web_tools,
+    _result_sources,
+    _web_activity,
     compaction_instructions,
     history_has_compaction,
+    history_has_web_blocks,
+    stream_chat,
     suggest_title,
     to_api_messages,
+    web_tools,
 )
 
 
@@ -159,9 +169,23 @@ def test_suggest_title_sends_a_short_haiku_prompt(monkeypatch):
     assert messages.kwargs["max_tokens"] == TITLE_MAX_TOKENS
     assert "stop_sequences" not in messages.kwargs
     assert "system" not in messages.kwargs
+    assert "tools" not in messages.kwargs
     assert prompt == f"{TITLE_INSTRUCTION}\n\n{excerpt}"
     assert len(excerpt) <= TITLE_INPUT_CHARS
     assert "detail detail" in excerpt
+
+
+def test_suggest_title_includes_the_reply_so_the_name_agrees_with_it(monkeypatch):
+    messages = _Messages(text="LeBron joins the 76ers")
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    reply = "LeBron James plays for the Philadelphia 76ers."
+    assert suggest_title("what team does lebron play for rn", reply) == "LeBron joins the 76ers"
+    prompt = messages.kwargs["messages"][0]["content"]
+    assert "Reply:\n" in prompt
+    assert "Philadelphia 76ers" in prompt
+    assert "must not state a fact the reply contradicts" in prompt
+    assert "tools" not in messages.kwargs
 
 
 def test_suggest_title_strips_a_markdown_heading(monkeypatch):
@@ -220,3 +244,118 @@ def test_compact_trigger_rejects_values_under_the_api_minimum(monkeypatch):
     monkeypatch.setenv("COMPACT_TRIGGER_TOKENS", "49999")
     with pytest.raises(RuntimeError, match="50000"):
         load_settings()
+
+
+def test_web_tools_limit_fetch_to_user_and_search_urls():
+    tools = web_tools()
+    assert [tool["type"] for tool in tools] == [WEB_SEARCH_TOOL_TYPE, WEB_FETCH_TOOL_TYPE]
+    assert tools[0]["allowed_callers"] == ["direct"]
+    assert tools[1]["allowed_callers"] == ["direct"]
+    sources = tools[1]["url_sources"]
+    assert sources["user_input"] == {"type": "all"}
+    assert sources["client_tool_results"] == {"type": "none"}
+    assert sources["server_tool_results"]["type"] == "only"
+    assert sources["server_tool_results"]["tools"] == [
+        {"type": "tool_reference", "name": "web_search"}
+    ]
+
+
+def test_history_has_web_blocks_finds_each_block_type():
+    for block_type in WEB_BLOCK_TYPES:
+        path = [message("assistant", "x")]
+        path[0]["content"] = [{"type": block_type}]
+        assert history_has_web_blocks(path)
+    assert not history_has_web_blocks([message("user", "plain")])
+
+
+def test_web_tools_are_declared_with_tool_choice_none_when_the_toggle_is_off():
+    searched = [
+        {
+            "role": "assistant",
+            "content": [{"type": "web_search_tool_result", "content": [], "tool_use_id": "t"}],
+        }
+    ]
+    plain = [message("user", "hello")]
+
+    kept = {}
+    _attach_web_tools(kept, searched, False)
+    assert "tools" in kept
+    assert kept["tool_choice"] == {"type": "none"}
+
+    allowed = {}
+    _attach_web_tools(allowed, searched, True)
+    assert "tools" in allowed
+    assert "tool_choice" not in allowed
+
+    quiet = {}
+    _attach_web_tools(quiet, plain, False)
+    assert "tools" not in quiet
+    assert "tool_choice" not in quiet
+
+
+def test_result_sources_drop_encrypted_content():
+    block = {
+        "type": "web_search_tool_result",
+        "content": [
+            {
+                "type": "web_search_result",
+                "title": "Docs",
+                "url": "https://example.com",
+                "encrypted_content": "secret",
+            }
+        ],
+    }
+    assert _result_sources(block) == [{"title": "Docs", "url": "https://example.com"}]
+
+
+def test_web_turn_tells_the_model_to_look_up_current_facts(monkeypatch):
+    class _Final:
+        content = []
+
+        class usage:
+            @staticmethod
+            def model_dump(exclude_none=True):
+                return {}
+
+    class _Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def __iter__(self):
+            return iter([])
+
+        def get_final_message(self):
+            return _Final()
+
+    class _Messages:
+        def __init__(self):
+            self.kwargs = None
+
+        def stream(self, **kwargs):
+            self.kwargs = kwargs
+            return _Stream()
+
+    messages = _Messages()
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: type("Client", (), {"messages": messages})())
+    path = [message("user", "what team does lebron play for?")]
+    list(stream_chat(path, None, "claude-haiku-4-5", web=True))
+    assert messages.kwargs["system"] == WEB_TURN_INSTRUCTION
+    assert "tool_choice" not in messages.kwargs
+    assert "tools" in messages.kwargs
+
+    list(stream_chat(path, None, "claude-haiku-4-5", web=False))
+    assert "system" not in messages.kwargs
+    assert "tools" not in messages.kwargs
+
+
+def test_web_activity_survives_malformed_json():
+    assert _web_activity({"name": "web_search", "json": '{"query": "ok"'}) == {
+        "type": "web_activity",
+        "tool": "web_search",
+        "query": "",
+        "url": "",
+    }
