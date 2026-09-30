@@ -83,7 +83,7 @@ def to_api_messages(path: list[dict], ttl: str) -> list[dict]:
     Stored content blocks are copied and sent unchanged, except for a
     cache_control breakpoint on the last block of the inherited message and
     the last block of the new user message. Consecutive same-role turns
-    (a merge note followed by a user message) are concatenated.
+    are concatenated.
     """
     if not path:
         return []
@@ -332,47 +332,6 @@ def stream_chat(
             "content": [_dump_block(block) for block in final.content],
             "usage": _dump_usage(final.usage),
         }
-
-
-def summarize_side_node(path: list[dict], model: str | None = None) -> str:
-    """One non-streaming call. Nothing is saved. Compaction is not enabled."""
-    settings = get_settings()
-    chosen = resolve_model(model)
-    messages = to_api_messages(path, settings.cache_ttl)
-    instruction = {
-        "type": "text",
-        "text": (
-            "Summarize what this side node added, beyond the conversation it "
-            "forked from, in 1-3 sentences. Reply with only the summary."
-        ),
-    }
-    if messages and messages[-1]["role"] == "user":
-        messages[-1]["content"].append(instruction)
-    else:
-        messages.append({"role": "user", "content": [instruction]})
-
-    kwargs: dict[str, Any] = {
-        "model": chosen,
-        "max_tokens": min(settings.max_tokens, 512),
-        "messages": messages,
-    }
-    _attach_web_tools(kwargs, path, False)
-    client = _client()
-    if _use_beta(path, False):
-        kwargs["betas"] = [COMPACTION_BETA]
-        response = client.beta.messages.create(**kwargs)
-    else:
-        response = client.messages.create(**kwargs)
-
-    parts = []
-    for block in response.content:
-        dumped = _dump_block(block)
-        if dumped.get("type") == "text" and dumped.get("text"):
-            parts.append(dumped["text"])
-    summary = "\n".join(parts).strip()
-    if not summary:
-        raise LLMError("The summary came back empty")
-    return summary
 
 
 def title_excerpt(text: str) -> str:

@@ -29,7 +29,6 @@ from app.db import (
     get_thread,
     init_db,
     insert_message,
-    latest_in_thread,
     list_conversations,
     messages_in_conversation,
     next_parent_id,
@@ -42,7 +41,7 @@ from app.db import (
     undo_user_message,
     update_goal,
 )
-from app.llm import LLMError, stream_chat, suggest_title, summarize_side_node
+from app.llm import LLMError, stream_chat, suggest_title
 
 logger = logging.getLogger("tangents")
 if not logger.handlers:
@@ -88,10 +87,6 @@ class NewMessage(BaseModel):
 
 class NewThread(BaseModel):
     fork_message_id: str
-
-
-class MergeBody(BaseModel):
-    summary: str = Field(min_length=1)
 
 
 def _sse(event: str, data: dict) -> str:
@@ -370,63 +365,3 @@ async def post_message(thread_id: str, body: NewMessage) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-def _side_tip(conn, thread_id: str):
-    thread = get_thread(conn, thread_id)
-    if thread is None:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    if thread["parent_thread_id"] is None:
-        raise HTTPException(status_code=400, detail="The center node has no side node to summarize")
-    tip = latest_in_thread(conn, thread_id)
-    if tip is None:
-        raise HTTPException(status_code=400, detail="This side node has no messages to summarize")
-    return thread, tip
-
-
-@app.post("/api/threads/{thread_id}/summary")
-def post_summary(thread_id: str, model: str | None = None) -> dict:
-    conn = connect()
-    try:
-        thread, tip = _side_tip(conn, thread_id)
-        try:
-            path = get_context(messages_in_conversation(conn, thread["conversation_id"]), tip["id"])
-        except NotImplementedError as exc:
-            raise HTTPException(status_code=500, detail="get_context is not implemented yet") from exc
-        try:
-            summary = summarize_side_node(path, model)
-        except LLMError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"summary": summary}
-    finally:
-        conn.close()
-
-
-@app.post("/api/threads/{thread_id}/merge", status_code=201)
-def post_merge(thread_id: str, body: MergeBody) -> dict:
-    conn = connect()
-    try:
-        thread = get_thread(conn, thread_id)
-        if thread is None:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        if thread["parent_thread_id"] is None:
-            raise HTTPException(status_code=400, detail="The center node has nothing to merge")
-        parent = get_thread(conn, thread["parent_thread_id"])
-        if parent is None:
-            raise HTTPException(status_code=404, detail="Parent thread not found")
-        summary = body.summary.strip()
-        if not summary:
-            raise HTTPException(status_code=400, detail="Summary is empty")
-        prefix = "From side node: "
-        note = summary if summary.startswith(prefix) else prefix + summary
-        message = insert_message(
-            conn,
-            thread_id=parent["id"],
-            parent_id=next_parent_id(conn, parent),
-            role="user",
-            content=[{"type": "text", "text": note}],
-            is_note=True,
-        )
-        return message
-    finally:
-        conn.close()
