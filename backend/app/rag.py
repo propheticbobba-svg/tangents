@@ -21,7 +21,7 @@ from app.config import BACKEND_DIR, get_settings
 from app.db import new_id, now
 
 TEXT_EXTENSIONS = frozenset({".txt", ".md", ".markdown"})
-MARKITDOWN_EXTENSIONS = frozenset({".docx", ".pdf", ".pptx", ".xlsx", ".html", ".htm", ".epub"})
+MARKITDOWN_EXTENSIONS = frozenset({".docx", ".pptx", ".xlsx", ".html", ".htm", ".epub"})
 SEARCH_MODES = ("hybrid", "vector", "keyword")
 RRF_K = 60
 CANDIDATES = 20
@@ -45,6 +45,9 @@ DOCS_INSTRUCTION = (
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 _WORD = re.compile(r"\w+")
+_TABLE_LINE = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_SEPARATOR = re.compile(r"^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
+_TABLE_CAPTION = re.compile(r"^\s*<!--\s*table-caption:\s*(.*?)\s*-->\s*$")
 _RETRIEVAL_PREFIX = "Represent this sentence for searching relevant passages: "
 QUERY_PREFIXES = {
     "BAAI/bge-small-en-v1.5": _RETRIEVAL_PREFIX,
@@ -128,6 +131,13 @@ def to_markdown(filename: str, data: bytes) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix in TEXT_EXTENSIONS:
         return data.decode("utf-8-sig", errors="replace")
+    if suffix == ".pdf":
+        from app.pdf import pdf_to_markdown
+
+        try:
+            return pdf_to_markdown(data)
+        except UnsupportedDocument as exc:
+            raise UnsupportedDocument(f"{filename} {exc}") from exc
     if suffix in MARKITDOWN_EXTENSIONS:
         from markitdown import MarkItDown
 
@@ -144,40 +154,95 @@ def to_markdown(filename: str, data: bytes) -> str:
 def chunk_markdown(
     text: str, max_words: int = DEFAULT_MAX_WORDS, overlap: int = DEFAULT_OVERLAP
 ) -> list[Chunk]:
-    """Split on headings, then window long sections. Headings are joined with ' > '."""
+    """Split on headings, then window long sections. Headings are joined with ' > '.
+
+    Pipe tables keep their line breaks, split by whole rows, and repeat the header
+    in every chunk. A table never shares a chunk with prose.
+    """
     if max_words < 1 or overlap < 0 or overlap >= max_words:
         raise ValueError("need max_words >= 1 and 0 <= overlap < max_words")
 
-    sections: list[tuple[str, str]] = []
+    chunks: list[Chunk] = []
     stack: list[tuple[int, str]] = []
-    lines: list[str] = []
+    prose: list[str] = []
+    table: list[str] = []
+    caption = ""
 
-    def flush() -> None:
-        body = " ".join(" ".join(lines).split())
-        if body:
-            sections.append((" > ".join(title for _, title in stack), body))
-        lines.clear()
+    def path() -> str:
+        return " > ".join(title for _, title in stack)
+
+    def flush_prose() -> None:
+        body = " ".join(" ".join(prose).split())
+        prose.clear()
+        if not body:
+            return
+        words = body.split()
+        step = max_words - overlap
+        for start in range(0, len(words), step):
+            chunks.append(Chunk(path(), " ".join(words[start : start + max_words])))
+            if start + max_words >= len(words):
+                break
+
+    def flush_table() -> None:
+        nonlocal caption
+        lines = [line.strip() for line in table]
+        table.clear()
+        if not lines:
+            return
+        heading = " > ".join(part for part in (path(), caption) if part)
+        caption = ""
+        head = lines[:2] if len(lines) >= 2 and _TABLE_SEPARATOR.match(lines[1]) else []
+        head_words = sum(len(_WORD.findall(line)) for line in head)
+        group: list[str] = []
+        used = head_words
+        for row in lines[len(head) :]:
+            count = len(_WORD.findall(row))
+            if group and used + count > max_words:
+                chunks.append(Chunk(heading, "\n".join(head + group)))
+                group, used = [], head_words
+            group.append(row)
+            used += count
+        if group or head:
+            chunks.append(Chunk(heading, "\n".join(head + group)))
+
+    def caption_as_prose() -> None:
+        nonlocal caption
+        if caption:
+            prose.append(caption)
+            caption = ""
 
     for line in text.splitlines():
+        caption_match = _TABLE_CAPTION.match(line)
+        if caption_match:
+            flush_table()
+            caption_as_prose()
+            flush_prose()
+            caption = caption_match.group(1)
+            continue
+        if _TABLE_LINE.match(line):
+            flush_prose()
+            table.append(line)
+            continue
+        if not line.strip():
+            if table:
+                flush_table()
+            else:
+                prose.append(line)
+            continue
+        flush_table()
+        caption_as_prose()
         match = _HEADING.match(line)
         if match is None:
-            lines.append(line)
+            prose.append(line)
             continue
-        flush()
+        flush_prose()
         level = len(match.group(1))
         while stack and stack[-1][0] >= level:
             stack.pop()
         stack.append((level, match.group(2).strip("# ").strip()))
-    flush()
-
-    chunks: list[Chunk] = []
-    step = max_words - overlap
-    for heading, body in sections:
-        words = body.split()
-        for start in range(0, len(words), step):
-            chunks.append(Chunk(heading, " ".join(words[start : start + max_words])))
-            if start + max_words >= len(words):
-                break
+    flush_table()
+    caption_as_prose()
+    flush_prose()
     return chunks
 
 
@@ -201,6 +266,25 @@ def ingest(
 ) -> dict[str, Any]:
     markdown = to_markdown(filename, data)
     chunks = chunk_markdown(markdown, max_words, overlap)
+    return store_document(
+        conn,
+        conversation_id,
+        filename,
+        _title(markdown, filename),
+        chunks,
+        embedder=embedder,
+    )
+
+
+def store_document(
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    filename: str,
+    title: str,
+    chunks: list[Chunk],
+    *,
+    embedder: Embedder | None = None,
+) -> dict[str, Any]:
     if not chunks:
         raise UnsupportedDocument(f"{filename} has no text")
     vectors = (embedder or get_embedder()).passages([chunk.indexed_text for chunk in chunks])
@@ -209,7 +293,7 @@ def ingest(
         "id": new_id(),
         "conversation_id": conversation_id,
         "filename": filename,
-        "title": _title(markdown, filename),
+        "title": title,
         "created_at": now(),
     }
     conn.execute(

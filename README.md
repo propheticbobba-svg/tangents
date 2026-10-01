@@ -42,6 +42,7 @@ Copy `backend/.env.example` to `backend/.env`. The file is gitignored.
 | `EMBED_MODEL` | no | Local embedding model. Defaults to `snowflake/snowflake-arctic-embed-m`. Changing it requires re-uploading documents. |
 | `RAG_TOP_K` | no | Passages attached to a Docs turn. Defaults to 5. Values under 1 refuse to start. |
 | `MAX_UPLOAD_MB` | no | Largest document upload. Defaults to 25. Values under 1 refuse to start. |
+| `PDF_MAX_PAGES` | no | Pages read from one PDF. Defaults to 200. Values under 1 refuse to start. |
 
 The database is `backend/tangents.db`.
 
@@ -177,6 +178,10 @@ Turning the toggle on or off changes the cached prefix, so the next turn in that
 ## Documents
 
 Each conversation has its own documents, listed in the sidebar above the tree. Upload accepts `.txt`, `.md`, `.markdown`, `.docx`, `.pdf`, `.pptx`, `.xlsx`, `.html`, `.htm`, and `.epub`.
+
+PDFs are read locally, page by page. A page with a text layer uses that text. A page without one is read with RapidOCR. RapidLayout finds titles, tables, headers, and footers; headers and footers are dropped. Tables stay row by row, and a long table repeats its header in every passage. A table that continues onto the next page stays one table. The layout, OCR, and table models download on first use.
+
+To score extraction on the sample PDF, from `backend/` run `uv run python scripts/bench_pdf.py`. Add `--answer` to also ask Haiku the question set.
 
 The header **Docs** switch sits next to **Web**. It is off by default and remembered in the browser, and it stays disabled until the conversation has a document. With it on, that turn searches the conversation's documents and saves the passages in the user message, ahead of the typed text. A fork from that reply still sees them. The chat shows a **Searched your documents** row on that message.
 

@@ -70,6 +70,58 @@ def test_chunk_markdown_without_headings():
     assert chunks[0].text == "just some text"
 
 
+def test_chunk_markdown_keeps_table_out_of_prose():
+    text = "Intro words here.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter the table.\n"
+    chunks = chunk_markdown(text)
+    assert [chunk.text for chunk in chunks] == [
+        "Intro words here.",
+        "| A | B |\n| --- | --- |\n| 1 | 2 |",
+        "After the table.",
+    ]
+    assert "\n" in chunks[1].text
+
+
+def test_chunk_markdown_repeats_table_header():
+    rows = ["| ID | Name | Value |", "| --- | --- | --- |"]
+    rows.extend(f"| #{i:03d} | Item {i} | ${i * 100}.00 |" for i in range(1, 31))
+    chunks = chunk_markdown("\n".join(rows), max_words=40, overlap=10)
+    assert len(chunks) > 1
+    seen: list[str] = []
+    for chunk in chunks:
+        lines = chunk.text.splitlines()
+        assert lines[0] == rows[0]
+        assert lines[1] == rows[1]
+        seen.extend(lines[2:])
+    assert seen == rows[2:]
+
+
+def test_chunk_markdown_table_without_separator_adds_no_header():
+    rows = ["| a | b |", "| 1 | 2 |", "| 3 | 4 |"]
+    chunks = chunk_markdown("\n".join(rows), max_words=4, overlap=1)
+    seen: list[str] = []
+    for chunk in chunks:
+        assert "---" not in chunk.text
+        seen.extend(chunk.text.splitlines())
+    assert seen == rows
+
+
+def test_table_caption_lands_in_the_search_title(conn):
+    cid = create_conversation(conn)["id"]
+    body = (
+        b"# Report\n\n## Sales\n\n<!-- table-caption: Table 1: Totals -->\n\n"
+        b"| A | B |\n| --- | --- |\n| 1 | 2 |\n"
+    )
+    ingest(conn, cid, "report.md", body, embedder=FakeEmbedder())
+    hits = search(conn, cid, "Totals", k=1, mode="keyword", embedder=FakeEmbedder())
+    assert hits[0]["heading"] == "Report > Sales > Table 1: Totals"
+    assert to_search_result_blocks(hits)[0]["title"] == "Report - Table 1: Totals"
+
+
+def test_to_markdown_pdf_uses_layout_pipeline(monkeypatch):
+    monkeypatch.setattr("app.pdf.pdf_to_markdown", lambda data, **kwargs: "# T\n\nhello")
+    assert to_markdown("a.pdf", b"...") == "# T\n\nhello"
+
+
 def test_chunk_markdown_rejects_bad_window():
     with pytest.raises(ValueError):
         chunk_markdown("text", max_words=10, overlap=10)
