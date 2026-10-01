@@ -9,8 +9,14 @@ dependencies = [
     "fastembed>=0.8.1",
     "markitdown[docx,pdf,pptx,xlsx]>=0.1.8",
     "numpy>=2.4.6",
+    "onnxruntime>=1.17",
+    "pdfplumber>=0.11",
+    "pypdfium2>=5",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.32",
+    "rapid-layout>=1.2.1",
+    "rapid-table>=3.0.2",
+    "rapidocr>=3.4",
     "uvicorn[standard]>=0.32",
 ]
 

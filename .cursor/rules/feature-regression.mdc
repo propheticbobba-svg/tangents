@@ -106,18 +106,19 @@ Files: `delete_thread` in `backend/app/db.py`, `DELETE /api/threads/{id}` in `ba
 
 ## Document retrieval
 
-Files: `backend/app/rag.py`, the `documents` / `chunks` / `chunks_fts` schema and `delete_conversation` in `backend/app/db.py`, `EMBED_MODEL`, `RAG_TOP_K`, and `MAX_UPLOAD_MB` in `backend/app/config.py`, document routes in `backend/app/main.py`, `frontend/src/DocumentsPanel.tsx`, `frontend/src/DocPassages.tsx`, `frontend/src/docsearch.ts`, the header and sidebar in `frontend/src/App.tsx`, `backend/tests/test_rag.py`.
+Files: `backend/app/rag.py`, `backend/app/pdf.py`, the `documents` / `chunks` / `chunks_fts` schema and `delete_conversation` in `backend/app/db.py`, `EMBED_MODEL`, `RAG_TOP_K`, `MAX_UPLOAD_MB`, and `PDF_MAX_PAGES` in `backend/app/config.py`, document routes in `backend/app/main.py`, `frontend/src/DocumentsPanel.tsx`, `frontend/src/DocPassages.tsx`, `frontend/src/docsearch.ts`, the header and sidebar in `frontend/src/App.tsx`, `backend/tests/test_rag.py`, `backend/tests/test_pdf.py`, `backend/scripts/bench_pdf.py`, `backend/bench/`.
 
 - Documents belong to one conversation. `search` only returns chunks whose `conversation_id` matches. Every node in that conversation can search them.
-- `.txt`, `.md`, `.markdown` are decoded as UTF-8. `.docx`, `.pdf`, `.pptx`, `.xlsx`, `.html`, `.htm`, `.epub` go through markitdown. Anything else, or a file with no text, raises `UnsupportedDocument`.
-- Chunks split on Markdown headings first, then a word window (default 180 words, 30 overlap). Each chunk keeps its heading path joined with " > ".
+- `.txt`, `.md`, `.markdown` are decoded as UTF-8. `.docx`, `.pptx`, `.xlsx`, `.html`, `.htm`, `.epub` go through markitdown. `.pdf` is read locally, page by page: the text layer when a page has one, RapidOCR when it does not. RapidLayout (`pp_doc_layoutv3`) marks titles and tables and drops headers and footers. Text-layer tables come from pdfplumber; scanned tables come from RapidTable. A table continued on the next page is merged into one table. `force_ocr` is only for the benchmark, not for upload. Anything else, or a file with no text, raises `UnsupportedDocument`. A PDF over `PDF_MAX_PAGES` (default 200, refuses values under 1) raises `UnsupportedDocument`.
+- Chunks split on Markdown headings first, then a word window (default 180 words, 30 overlap). Each chunk keeps its heading path joined with " > ". Pipe tables keep line breaks, split by whole rows, repeat the header, and never mix with prose. A `<!-- table-caption: ... -->` line is appended to that table chunk's heading.
 - Embeddings are local (`fastembed`, default `snowflake/snowflake-arctic-embed-m`), normalized float32, cached under `backend/.cache/`. Changing `EMBED_MODEL` requires re-ingesting.
 - Queries get the model's retrieval prefix from `QUERY_PREFIXES`; passages get none. A model not in the map gets no prefix.
 - `search` modes are `hybrid` (default), `vector`, `keyword`. Hybrid merges vector cosine and FTS5 bm25 with reciprocal rank fusion (k=60). User text reaches FTS5 only as quoted words joined by OR.
 - The sidebar Documents panel lists a conversation's files, uploads them, and deletes one at a time. `POST /api/conversations/{id}/documents` returns 201, 404 for an unknown conversation, 400 for an unsupported file, and 413 over `MAX_UPLOAD_MB` (default 25, refuses values under 1). `GET` returns the list or 404. `DELETE /api/documents/{id}` returns 204, or 404.
 - A Docs toggle, off by default, asks a turn to search. With it on and at least one document, the saved user message is `search_result` blocks (citations enabled) followed by the typed text. Those blocks are never `tool_use` / `tool_result` rows. Forks inherit them because they are on the parent path. The goal and the node title still come from the typed text only. With the toggle off, or with no documents, the user row is text only.
 - A user message with those blocks shows a collapsible "Searched your documents" row. It is `select-none`.
-- Tests never download the model; they use a fake embedder.
+- Tests never download the embedding model; they use a fake embedder. PDF tests use fake layout, OCR, and table engines and never download those models. `backend/scripts/bench_pdf.py` is not a pytest test; it uses the real models.
+- Introduced on `pdf-layout-ocr`.
 
 ## Removed
 

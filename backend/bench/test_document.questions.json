@@ -1,0 +1,154 @@
+[
+  {
+    "id": "q01",
+    "kind": "table_cell",
+    "question": "What is the status of item #007?",
+    "expected": "On Hold",
+    "evidence": ["#007"],
+    "accept": [["on hold"]]
+  },
+  {
+    "id": "q02",
+    "kind": "table_cell",
+    "question": "What is the value of Item 13?",
+    "expected": "$1300.00",
+    "evidence": ["#013"],
+    "accept": [["1300"]]
+  },
+  {
+    "id": "q03",
+    "kind": "table_cell",
+    "question": "What category is Item 24 in?",
+    "expected": "Update",
+    "evidence": ["#024"],
+    "accept": [["update"]]
+  },
+  {
+    "id": "q04",
+    "kind": "table_cell",
+    "question": "What is the status of Item 27?",
+    "expected": "On Hold",
+    "evidence": ["#027"],
+    "accept": [["on hold"]]
+  },
+  {
+    "id": "q05",
+    "kind": "table_cell",
+    "question": "What is the value of item #020?",
+    "expected": "$2000.00",
+    "evidence": ["#020"],
+    "accept": [["2000"]]
+  },
+  {
+    "id": "q06",
+    "kind": "table_cell",
+    "question": "Which item has a value of $1500.00?",
+    "expected": "Item 15 (#015)",
+    "evidence": ["#015"],
+    "accept": [["item 15", "015"]]
+  },
+  {
+    "id": "q07",
+    "kind": "table_cell",
+    "question": "What are the category and status of item #030?",
+    "expected": "Product, Completed",
+    "evidence": ["#030"],
+    "accept": [["product"], ["completed"]]
+  },
+  {
+    "id": "q08",
+    "kind": "table_cell",
+    "question": "What is the status of Item 19?",
+    "expected": "On Hold",
+    "evidence": ["#019"],
+    "accept": [["on hold"]]
+  },
+  {
+    "id": "q09",
+    "kind": "table_cell",
+    "question": "What is the name of the item with ID #011, and what is its value?",
+    "expected": "Item 11, $1100.00",
+    "evidence": ["#011"],
+    "accept": [["item 11"], ["1100"]]
+  },
+  {
+    "id": "q10",
+    "kind": "table_multi",
+    "question": "How many items are in the table?",
+    "expected": "30",
+    "evidence": ["#001", "#030"],
+    "accept": [["30", "thirty"]]
+  },
+  {
+    "id": "q11",
+    "kind": "table_multi",
+    "question": "Which items are in the Report category?",
+    "expected": "Items 2, 7, 12, 17, 22, and 27",
+    "evidence": ["#002", "#007", "#012", "#017", "#022", "#027"],
+    "accept": [["item 2", "002"], ["item 7", "007"], ["item 12", "012"], ["item 17", "017"], ["item 22", "022"], ["item 27", "027"]]
+  },
+  {
+    "id": "q12",
+    "kind": "table_multi",
+    "question": "Which items have the status Active?",
+    "expected": "Items 4, 8, 12, 16, 20, 24, and 28",
+    "evidence": ["#004", "#008", "#012", "#016", "#020", "#024", "#028"],
+    "accept": [["item 4", "004"], ["item 8", "008"], ["item 12", "012"], ["item 16", "016"], ["item 20", "020"], ["item 24", "024"], ["item 28", "028"]]
+  },
+  {
+    "id": "q13",
+    "kind": "prose",
+    "question": "What does the first paragraph say the document is designed to test?",
+    "expected": "document parsing capabilities",
+    "evidence": ["designed to test document parsing capabilities"],
+    "accept": [["document parsing"]]
+  },
+  {
+    "id": "q14",
+    "kind": "prose",
+    "question": "What is the second paragraph designed to ensure?",
+    "expected": "that the document has substantial text both above and below the table",
+    "evidence": ["substantial text both above and below the table"],
+    "accept": [["above and below"]]
+  },
+  {
+    "id": "q15",
+    "kind": "prose",
+    "question": "What does the paragraph below the table say it tests?",
+    "expected": "whether parsers can identify and extract text that follows tabular data structures",
+    "evidence": ["text that follows tabular data structures"],
+    "accept": [["follow"], ["tabular", "table"]]
+  },
+  {
+    "id": "q16",
+    "kind": "prose",
+    "question": "What kinds of documents does the final paragraph say this layout is typical of?",
+    "expected": "business reports, data analysis documents, and similar structured information",
+    "evidence": ["typical of business reports"],
+    "accept": [["business report"], ["data analysis"]]
+  },
+  {
+    "id": "q17",
+    "kind": "prose",
+    "question": "According to the final paragraph, how many rows does the data table have?",
+    "expected": "30",
+    "evidence": ["data table with 30 rows"],
+    "accept": [["30", "thirty"]]
+  },
+  {
+    "id": "q18",
+    "kind": "negative",
+    "question": "What is the value of Item 31?",
+    "expected": "The documents do not say. There are only 30 items.",
+    "evidence": [],
+    "accept": []
+  },
+  {
+    "id": "q19",
+    "kind": "negative",
+    "question": "Who wrote this document?",
+    "expected": "The documents do not say.",
+    "evidence": [],
+    "accept": []
+  }
+]

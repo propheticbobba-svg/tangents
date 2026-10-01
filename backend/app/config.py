@@ -60,6 +60,7 @@ class Settings:
     embed_model: str
     rag_top_k: int
     max_upload_mb: int
+    pdf_max_pages: int
 
     @property
     def compaction_supported(self) -> bool:
@@ -120,6 +121,7 @@ def load_settings() -> Settings:
     embed_model = os.environ.get("EMBED_MODEL", "").strip() or DEFAULT_EMBED_MODEL
     rag_top_k = _positive_int_env("RAG_TOP_K", "5")
     max_upload_mb = _positive_int_env("MAX_UPLOAD_MB", "25")
+    pdf_max_pages = _positive_int_env("PDF_MAX_PAGES", "200")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
     model = os.environ.get("ANTHROPIC_MODEL", "").strip() or None
@@ -136,6 +138,7 @@ def load_settings() -> Settings:
         embed_model=embed_model,
         rag_top_k=rag_top_k,
         max_upload_mb=max_upload_mb,
+        pdf_max_pages=pdf_max_pages,
     )
 
 
