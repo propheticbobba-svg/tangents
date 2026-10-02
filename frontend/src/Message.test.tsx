@@ -154,3 +154,47 @@ describe("MessageView fork button", () => {
     expect(screen.queryByText("I weighed the options.")).toBeNull();
   });
 });
+
+describe("Markdown tables", () => {
+  const table = [
+    "| Item | Count |",
+    "| :--- | ---: |",
+    "| Apples | 3 |",
+    "| Pears | 12 |",
+  ].join("\n");
+
+  function renderTable() {
+    render(
+      <MessageView
+        message={message("assistant", { content: [{ type: "text", text: table }] })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+  }
+
+  it("wraps a table in a scroll container and keeps column alignment", () => {
+    renderTable();
+
+    const element = document.querySelector("table");
+    expect(element).not.toBeNull();
+    expect(element?.parentElement?.classList.contains("markdown-table")).toBe(true);
+    expect(element?.hasAttribute("node")).toBe(false);
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Item",
+      "Count",
+    ]);
+    expect(screen.getByRole("cell", { name: "12" }).style.textAlign).toBe("right");
+    expect(screen.getByRole("cell", { name: "Apples" }).style.textAlign).toBe("left");
+  });
+
+  it("keeps Fork pinned to the article when the reply has a table", () => {
+    renderTable();
+
+    const button = screen.getByRole("button", { name: "Fork" });
+    expect(button.className).toContain("sticky");
+    expect(button.className).toContain("bottom-3");
+    expect(stickyContainingBlock(button)).toBe(button.closest("article"));
+    expect(button.closest(".markdown-table")).toBeNull();
+  });
+});

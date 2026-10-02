@@ -22,7 +22,7 @@ Files: `frontend/src/App.tsx`, `frontend/src/api.ts`, conversation routes in `ba
 
 ## Turns, fork, and context
 
-Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/app/main.py`, `frontend/src/ChatPane.tsx`, `frontend/src/Message.tsx`, `frontend/src/SelectionPopover.tsx`.
+Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/app/main.py`, `frontend/src/ChatPane.tsx`, `frontend/src/Message.tsx`, `frontend/src/SelectionPopover.tsx`, the `.markdown` styles in `frontend/src/index.css`.
 
 - Context for a turn is only the `parent_id` walk to the root. The center node never receives side-node tokens. A side node does not see messages added to its parent after the fork. Sibling forks do not see each other.
 - A side node can be forked only from an assistant message. Its first message's `parent_id` is that fork message.
@@ -30,6 +30,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 - Stored message content is raw Anthropic blocks and is not edited. Messages are deleted only by the failed-turn rollback, by deleting a side node (its subtree), and by deleting a whole conversation.
 - Every assistant message has Fork. A text selection offers Fork from this (quote in the composer) and Explain this (quote plus "Explain this." sent immediately).
 - Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). Introduced on `sticky-fork-button`, now on `main`. `frontend/src/Message.test.tsx` covers it: the button keeps `sticky` and `bottom-3`, its nearest non-`contents` ancestor is the `<article>`, and it is never inside a `<p>`. Keep the `pointer-events-none contents` wrapper.
+- Markdown tables (in messages, the streaming reply, and thinking) render inside a `<div class="markdown-table">` that scrolls sideways when the table is too wide. Cells have borders and wrap long text. The header and the striped rows are shaded with `color-mix` from `var(--line)`, so both themes show them without `.dark` rules. GFM column alignment is kept through react-markdown's inline `text-align`. The `components` object is defined at module level and drops the `node` prop before it reaches the DOM. `.markdown-table` is a single-class selector so the `.markdown > :first-child` / `:last-child` margin reset still applies to it. `frontend/src/Message.test.tsx` covers the wrapper, alignment, and that Fork stays sticky with a table. Introduced on `markdown-tables`.
 
 ## Tree and node titles
 
