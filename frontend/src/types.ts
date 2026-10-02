@@ -3,6 +3,7 @@ export type WebSource = { title: string; url: string };
 export type ContentBlock = {
   type: string;
   text?: string;
+  thinking?: string;
   content?: unknown;
   name?: string;
   url?: string;
@@ -36,6 +37,8 @@ export type Usage = {
   cache_creation_input_tokens?: number;
   iterations?: UsageIteration[];
   server_tool_use?: { web_search_requests?: number; web_fetch_requests?: number };
+  stop_reason?: string | null;
+  thinking_ms?: number;
 };
 
 export type Message = {
@@ -90,7 +93,17 @@ export type StreamingTurn = {
   text: string;
   summaries: string[];
   activity: string[];
+  thinking: string;
+  thinkingStartedAt: number | null;
+  thinkingEndedAt: number | null;
 };
+
+export function thinkingText(content: ContentBlock[]): string {
+  return content
+    .filter((block) => block.type === "thinking" && block.thinking)
+    .map((block) => block.thinking as string)
+    .join("\n\n");
+}
 
 export function messageText(content: ContentBlock[]): string {
   return content

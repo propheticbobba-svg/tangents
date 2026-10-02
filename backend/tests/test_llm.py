@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from app.config import load_settings, model_supports_compaction
+from app.config import load_settings, model_supports_compaction, resolve_max_tokens
 from app.db import short_title
 from app.rag import DOCS_INSTRUCTION
 from app.llm import (
@@ -23,6 +23,7 @@ from app.llm import (
     history_has_web_blocks,
     stream_chat,
     suggest_title,
+    thinking_params,
     to_api_messages,
     web_tools,
 )
@@ -358,6 +359,193 @@ def test_web_turn_tells_the_model_to_look_up_current_facts(monkeypatch):
 
     list(stream_chat(path, None, "claude-haiku-4-5", web=True, docs=True))
     assert messages.kwargs["system"] == f"{WEB_TURN_INSTRUCTION}\n\n{DOCS_INSTRUCTION}"
+
+
+def test_breakpoint_skips_a_trailing_thinking_block():
+    original = {
+        **message("assistant", "", id="a"),
+        "content": [
+            {"type": "server_tool_use", "name": "web_search"},
+            {"type": "web_search_tool_result", "content": []},
+            {"type": "thinking", "thinking": "", "signature": "sig"},
+        ],
+    }
+    snapshot = copy.deepcopy(original)
+    api = to_api_messages([original, message("user", "next", id="u")], "5m")
+    assistant = api[0]["content"]
+    assert "cache_control" not in assistant[0]
+    assert assistant[1]["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+    assert "cache_control" not in assistant[2]
+    assert original == snapshot
+
+
+def test_breakpoint_is_skipped_when_a_message_is_only_thinking():
+    api = to_api_messages(
+        [
+            {
+                **message("assistant", "", id="a"),
+                "content": [{"type": "thinking", "thinking": "secret", "signature": "sig"}],
+            },
+            message("user", "next", id="u"),
+        ],
+        "5m",
+    )
+    assert "cache_control" not in api[0]["content"][0]
+    assert api[1]["content"][0]["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+
+
+def test_thinking_params_per_model():
+    assert thinking_params("claude-sonnet-5-5", None, False) == {
+        "thinking": {"type": "adaptive", "display": "summarized"},
+        "output_config": {"effort": "high"},
+    }
+    assert thinking_params("claude-opus-5-5", None, False)["output_config"] == {"effort": "medium"}
+    assert thinking_params("claude-fable-5-1", "max", False)["output_config"] == {"effort": "max"}
+    assert thinking_params("claude-sonnet-5-5", "turbo", False)["output_config"] == {"effort": "high"}
+    assert thinking_params("claude-haiku-4-5", None, False) == {}
+    assert thinking_params("claude-haiku-4-5", None, True) == {
+        "thinking": {"type": "enabled", "budget_tokens": 16000},
+    }
+    assert thinking_params("claude-unknown", "high", True) == {}
+
+
+def test_resolve_max_tokens(monkeypatch):
+    monkeypatch.delenv("MAX_TOKENS", raising=False)
+    monkeypatch.setattr("app.config._settings", None)
+    assert resolve_max_tokens("claude-sonnet-5-5") == 128_000
+    assert resolve_max_tokens("claude-haiku-4-5") == 64_000
+
+    monkeypatch.setenv("MAX_TOKENS", "8000")
+    monkeypatch.setattr("app.config._settings", None)
+    assert resolve_max_tokens("claude-sonnet-5-5") == 8000
+
+    monkeypatch.setenv("MAX_TOKENS", "999999")
+    monkeypatch.setattr("app.config._settings", None)
+    assert resolve_max_tokens("claude-sonnet-5-5") == 128_000
+
+
+def _scripted_client(monkeypatch, finals, events=None):
+    """A messages client whose stream() returns the next scripted final message."""
+    from types import SimpleNamespace
+
+    calls = []
+
+    class _Stream:
+        def __init__(self, final, scripted):
+            self._final = final
+            self._scripted = scripted
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def __iter__(self):
+            return iter(self._scripted)
+
+        def get_final_message(self):
+            return self._final
+
+    class _Messages:
+        def stream(self, **kwargs):
+            calls.append(kwargs)
+            index = len(calls) - 1
+            final = finals[index if index < len(finals) else -1]
+            scripted = [] if events is None else events[index if index < len(events) else -1]
+            return _Stream(final, scripted)
+
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr(
+        "app.llm._client",
+        lambda: type("Client", (), {"messages": _Messages()})(),
+    )
+    return calls, SimpleNamespace
+
+
+def test_pause_turn_is_continued_in_one_turn(monkeypatch):
+    from types import SimpleNamespace
+
+    finals = [
+        SimpleNamespace(
+            content=[{"type": "thinking", "thinking": ""}],
+            usage={"output_tokens": 10, "input_tokens": 1},
+            stop_reason="pause_turn",
+        ),
+        SimpleNamespace(
+            content=[{"type": "text", "text": "done"}],
+            usage={"output_tokens": 4, "input_tokens": 2},
+            stop_reason="end_turn",
+        ),
+    ]
+    calls, _namespace = _scripted_client(monkeypatch, finals)
+    events = list(stream_chat([message("user", "hi")], None, "claude-haiku-4-5"))
+    assert len(calls) == 2
+    assert calls[1]["messages"][-1] == {
+        "role": "assistant",
+        "content": [{"type": "thinking", "thinking": ""}],
+    }
+    done = events[-1]
+    assert done["content"] == [
+        {"type": "thinking", "thinking": ""},
+        {"type": "text", "text": "done"},
+    ]
+    assert done["usage"]["stop_reason"] == "end_turn"
+    assert done["usage"]["output_tokens"] == 14
+    assert done["usage"]["input_tokens"] == 3
+
+
+def test_pause_turn_stops_after_the_limit(monkeypatch):
+    from types import SimpleNamespace
+
+    finals = [
+        SimpleNamespace(
+            content=[{"type": "text", "text": "partial"}],
+            usage={"output_tokens": 1},
+            stop_reason="pause_turn",
+        )
+    ]
+    calls, _namespace = _scripted_client(monkeypatch, finals)
+    events = list(stream_chat([message("user", "hi")], None, "claude-haiku-4-5"))
+    assert len(calls) == 6
+    done = events[-1]
+    assert done["usage"]["stop_reason"] == "pause_turn"
+    assert done["content"] == [{"type": "text", "text": "partial"}] * 6
+
+
+def test_thinking_deltas_are_streamed_and_timed(monkeypatch):
+    from types import SimpleNamespace
+
+    scripted = [
+        SimpleNamespace(
+            type="content_block_delta",
+            index=0,
+            delta=SimpleNamespace(type="thinking_delta", thinking="weighing"),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            index=1,
+            delta=SimpleNamespace(type="text_delta", text="answer"),
+        ),
+    ]
+    finals = [
+        SimpleNamespace(
+            content=[
+                {"type": "thinking", "thinking": "weighing"},
+                {"type": "text", "text": "answer"},
+            ],
+            usage={"output_tokens": 5},
+            stop_reason="end_turn",
+        )
+    ]
+    ticks = iter([100.0, 100.5])
+    monkeypatch.setattr("app.llm.time.monotonic", lambda: next(ticks))
+    _scripted_client(monkeypatch, finals, events=[scripted])
+    events = list(stream_chat([message("user", "hi")], None, "claude-haiku-4-5"))
+    assert {"type": "thinking", "text": "weighing"} in events
+    assert {"type": "delta", "text": "answer"} in events
+    assert events[-1]["usage"]["thinking_ms"] == 500
+    assert events[-1]["usage"]["stop_reason"] == "end_turn"
 
 
 def test_web_activity_survives_malformed_json():

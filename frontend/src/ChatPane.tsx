@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Breadcrumb } from "./Breadcrumb";
 import { Composer } from "./Composer";
 import { MessageView, StreamingMessage } from "./Message";
@@ -32,6 +32,8 @@ export function ChatPane({
   onForkSelection,
   onSelectThread,
   onSaveGoal,
+  controls,
+  onContinue,
 }: {
   view: ThreadView | null;
   goal: string | null;
@@ -46,6 +48,8 @@ export function ChatPane({
   onForkSelection: (messageId: string, text: string, mode: "quote" | "explain") => void;
   onSelectThread: (threadId: string) => void;
   onSaveGoal: (goal: string) => Promise<void>;
+  controls: ReactNode;
+  onContinue: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -53,7 +57,13 @@ export function ChatPane({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [view?.messages.length, streaming?.text, streaming?.summaries.length, streaming?.activity.length]);
+  }, [
+    view?.messages.length,
+    streaming?.text,
+    streaming?.summaries.length,
+    streaming?.activity.length,
+    streaming?.thinking,
+  ]);
 
   function captureSelection() {
     const sel = window.getSelection();
@@ -103,12 +113,15 @@ export function ChatPane({
           </p>
         )}
         <div className="flex flex-col gap-4">
-          {view?.messages.map((message) => (
+          {view?.messages.map((message, index) => (
             <MessageView
               key={message.id}
               message={message}
               onFork={onFork}
               forkDisabled={sending}
+              onContinue={
+                !streaming && index === view.messages.length - 1 ? onContinue : undefined
+              }
             />
           ))}
           {streaming && (
@@ -116,6 +129,9 @@ export function ChatPane({
               text={streaming.text}
               summaries={streaming.summaries}
               activity={streaming.activity}
+              thinking={streaming.thinking}
+              thinkingStartedAt={streaming.thinkingStartedAt}
+              thinkingEndedAt={streaming.thinkingEndedAt}
             />
           )}
           <div ref={bottomRef} />
@@ -132,6 +148,7 @@ export function ChatPane({
         onSend={onSend}
         disabled={sending || !view}
         prefillKey={prefillKey}
+        controls={controls}
         placeholder={sideNode ? "Continue this side node" : "Message the center node"}
       />
       {selection && !sending && (

@@ -31,8 +31,8 @@ Copy `backend/.env.example` to `backend/.env`. The file is gitignored.
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | to call Claude | Read on the server only. Never sent to the browser. The server still starts without it and fails the call with a clear error. |
-| `ANTHROPIC_MODEL` | no | Optional fallback. The header picker chooses the model for each turn and is remembered in the browser. Current choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5. |
-| `MAX_TOKENS` | no | Output token cap. Defaults to 4096. |
+| `ANTHROPIC_MODEL` | no | Optional fallback. The model menu next to Send chooses the model for each turn and is remembered in the browser. Current choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5. |
+| `MAX_TOKENS` | no | Optional ceiling on reply length. Unset means each model's maximum: 128000 for Sonnet 5.5, Opus 5.5, and Fable 5.1, and 64000 for Haiku 4.5. A set value is used only when it is lower than that maximum. Values under 1 refuse to start. |
 | `CACHE_TTL` | no | `5m` (default) or `1h`. Anything else refuses to start. |
 | `COMPACT_TRIGGER_TOKENS` | no | Input-token trigger for server-side compaction. Defaults to 150000. Values under 50000 refuse to start. |
 | `WEB_SEARCH_MAX_USES` | no | Cap on web searches per request. Defaults to 5. Values under 1 refuse to start. |
@@ -118,7 +118,7 @@ Stored messages are not edited or deleted, except the user message of a turn tha
 | `GET` | `/api/conversations/{id}/tree` | | `goal` plus every thread: `parent_thread_id`, `fork_message_id`, `title`, `fork_snippet` (~120 characters of the fork-point text), `fork_position` (0-based index of the fork message in the parent thread). |
 | `GET` | `/api/threads/{id}/messages` | | The thread's own messages, the fork-point message (`forked_from`), and `ancestry` from the center node to this thread. |
 | `POST` | `/api/threads` | `{fork_message_id}` | Creates a side node. The fork point must be an assistant message. |
-| `POST` | `/api/threads/{id}/messages` | `{content, model?, web?}` | SSE stream. Events: `user_message`, `delta` (`{text}`), `compaction` (`{content}`, when the API compacts), `web_activity`, `web_result`, `done` (the saved assistant message, including usage), `error`. `web` defaults to false. |
+| `POST` | `/api/threads/{id}/messages` | `{content, model?, web?, docs?, effort?, extended_thinking?}` | SSE stream. Events: `user_message`, `thinking` (`{text}`), `delta` (`{text}`), `compaction` (`{content}`, when the API compacts), `web_activity`, `web_result`, `done` (the saved assistant message, including usage), `error`. `web` and `docs` default to false. `effort` is `low`, `medium`, `high`, `xhigh`, or `max`. |
 
 A failed chat turn emits `error` and deletes the user message it had just saved, so the tree does not keep a turn that never got a reply.
 
@@ -126,8 +126,8 @@ A failed chat turn emits `error` and deletes the user message it had just saved,
 
 Each chat request sets two explicit breakpoints, `{"type": "ephemeral", "ttl": "<CACHE_TTL>"}`, on content blocks:
 
-1. The last block of the inherited path: the message the new user turn attaches to. For the first message in a side node, that is the fork point, so sibling forks and the parent thread share that prefix.
-2. The last block of the new user message, so the next turn in the same thread can read it back.
+1. The last block of the inherited path that is not a thinking block: the message the new user turn attaches to. For the first message in a side node, that is the fork point, so sibling forks and the parent thread share that prefix. A message made only of thinking blocks gets no breakpoint, because the API rejects `cache_control` on a thinking block.
+2. The last block of the new user message that is not a thinking block, so the next turn in the same thread can read it back.
 
 `to_api_messages` deep-copies blocks before adding `cache_control`. Stored rows are not mutated. Consecutive same-role turns (a merge note followed by a user message) are concatenated so the API sees alternating roles.
 
@@ -163,7 +163,7 @@ A compaction block streams as one `compaction_delta` with the full summary, not 
 
 ## Web search
 
-The header has a **Web** toggle next to the model picker. It is off by default and remembered in the browser. Turning it on does not search every message. Claude is told to look up facts that can change, and to skip the web when the conversation itself is enough.
+The header has a **Web** toggle. It is off by default and remembered in the browser. The model and effort menu sits next to Send. Turning it on does not search every message. Claude is told to look up facts that can change, and to skip the web when the conversation itself is enough.
 
 The tools are Anthropic's server-side `web_search` and `web_fetch`. A search still saves one assistant message. `web_fetch` may only open a URL you pasted, or a URL that came back from `web_search`. It cannot fetch a URL it made up.
 
@@ -191,5 +191,7 @@ The header **Docs** switch sits next to **Web**. It is off by default and rememb
 - Right: the tree. One node per thread, edges from the parent thread to the side node. Children are ordered by the fork point's position in the parent, then by creation time. Hover a node for the fork-point snippet. Click to switch. The current node is highlighted.
 - Side nodes show a breadcrumb (`Center › … › this node`). Click a title there, or a card in the tree, to switch nodes.
 - Every assistant message has a **Fork** button. Selecting text in an assistant message also offers **Fork from this** (opens the side node with the selection quoted in the composer) and **Explain this** (opens it and sends the quote plus "Explain this." immediately).
-- Replies stream. Markdown and code blocks are rendered. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
-- The header has **Web** and **Docs** switches beside the model picker. Both off by default. See [Web search](#web-search) and [Documents](#documents).
+- Replies stream. Markdown and code blocks are rendered. While Claude thinks, the reply shows **Thinking…** with a running timer. Afterwards, **Thought for Ns** expands to a summary of that reasoning. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
+- The model menu sits next to **Send**. It chooses the model, an effort from Low to Max (each model marks its recommended level **Default**), and, for Haiku 4.5, an **Extended thinking** toggle. Sonnet 5.5, Opus 5.5, and Fable 5.1 always think. The choice is remembered in the browser.
+- If a reply hits the length limit, the message says so and offers **Continue**, which asks Claude to finish.
+- The header has **Web** and **Docs** switches. Both off by default. See [Web search](#web-search) and [Documents](#documents).

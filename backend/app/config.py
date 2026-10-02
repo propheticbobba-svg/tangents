@@ -33,6 +33,9 @@ COMPACTION_MODELS = (
 KEY_MISSING = "ANTHROPIC_API_KEY is not set in backend/.env"
 MODEL_MISSING = "Choose a model in the header, or set ANTHROPIC_MODEL in backend/.env"
 DEFAULT_EMBED_MODEL = "snowflake/snowflake-arctic-embed-m"
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+HAIKU_THINKING_BUDGET = 16_000
+UNKNOWN_MODEL_MAX_TOKENS = 32_000
 
 
 def _positive_int_env(name: str, default: str) -> int:
@@ -50,7 +53,7 @@ def _positive_int_env(name: str, default: str) -> int:
 class Settings:
     api_key: str | None
     model: str | None
-    max_tokens: int
+    max_tokens: int | None
     cache_ttl: str
     compact_trigger_tokens: int
     web_search_max_uses: int
@@ -101,13 +104,16 @@ def load_settings() -> Settings:
             "COMPACT_TRIGGER_TOKENS must be at least 50000 (the API minimum)"
         )
 
-    raw_max = os.environ.get("MAX_TOKENS", "4096")
-    try:
-        max_tokens = int(raw_max)
-    except ValueError as exc:
-        raise RuntimeError("MAX_TOKENS must be an integer") from exc
-    if max_tokens < 1:
-        raise RuntimeError("MAX_TOKENS must be at least 1")
+    raw_max = os.environ.get("MAX_TOKENS", "").strip()
+    if not raw_max:
+        max_tokens = None
+    else:
+        try:
+            max_tokens = int(raw_max)
+        except ValueError as exc:
+            raise RuntimeError("MAX_TOKENS must be an integer") from exc
+        if max_tokens < 1:
+            raise RuntimeError("MAX_TOKENS must be at least 1")
 
     web_search_max_uses = _positive_int_env("WEB_SEARCH_MAX_USES", "5")
     web_fetch_max_uses = _positive_int_env("WEB_FETCH_MAX_USES", "5")
@@ -143,6 +149,44 @@ def load_settings() -> Settings:
 
 
 _settings: Settings | None = None
+
+
+@dataclass(frozen=True)
+class ModelCaps:
+    efforts: tuple[str, ...]
+    default_effort: str | None
+    thinking: str  # "adaptive": always on. "extended": opt-in budget_tokens.
+    max_output_tokens: int
+
+
+# Output limits are from the Models API (max_tokens), checked Oct 1 2026.
+MODEL_CAPS = {
+    "claude-sonnet-5-5": ModelCaps(EFFORT_LEVELS, "high", "adaptive", 128_000),
+    "claude-opus-5-5": ModelCaps(EFFORT_LEVELS, "medium", "adaptive", 128_000),
+    "claude-fable-5-1": ModelCaps(EFFORT_LEVELS, "high", "adaptive", 128_000),
+    "claude-haiku-4-5": ModelCaps((), None, "extended", 64_000),
+}
+
+
+def model_caps(model: str) -> ModelCaps | None:
+    """Capabilities for a header model, including a dated -YYYYMMDD snapshot."""
+    if model in MODEL_CAPS:
+        return MODEL_CAPS[model]
+    for name in sorted(MODEL_CAPS, key=len, reverse=True):
+        prefix = name + "-"
+        if model.startswith(prefix):
+            rest = model[len(prefix) :]
+            if len(rest) == 8 and rest.isdigit():
+                return MODEL_CAPS[name]
+    return None
+
+
+def resolve_max_tokens(model: str) -> int:
+    """The model's output ceiling, or MAX_TOKENS when that is set lower."""
+    caps = model_caps(model)
+    ceiling = caps.max_output_tokens if caps else UNKNOWN_MODEL_MAX_TOKENS
+    configured = get_settings().max_tokens
+    return min(configured, ceiling) if configured else ceiling
 
 
 def get_settings() -> Settings:

@@ -35,7 +35,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 
 Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/app/db.py`, `_name_first_turn` in `backend/app/main.py`, `frontend/src/TreeView.tsx`, `frontend/src/Breadcrumb.tsx`.
 
-- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. Later messages do not rename the node. Introduced on `haiku-node-titles`.
+- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. A reply with no text gets that same 40-character fallback, and the title model is not called. Later messages do not rename the node. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
 - The center node stays on the tree after a fork. Cards are remeasured when the graph changes, so an existing node is not left hidden when its size did not change.
 - Side-node cards show Delete on hover; the center card does not. Clicking Delete does not switch nodes. `frontend/src/TreeView.test.tsx` covers both.
@@ -62,10 +62,14 @@ Files: `frontend/src/PinnedGoal.tsx`, `frontend/src/PinnedGoal.test.tsx`, the `<
 
 ## Streaming, cache, and compaction
 
-Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDivider.tsx`, `frontend/src/UsageFooter.tsx`.
+Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDivider.tsx`, `frontend/src/UsageFooter.tsx`, `frontend/src/ThinkingSection.tsx`, `frontend/src/Message.tsx`.
 
-- A chat turn streams `user_message`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
-- Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: last block of the inherited path, and last block of the new user message.
+- A chat turn streams `user_message`, `thinking`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
+- Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: the last block of the inherited path that is not a thinking block, and the last block of the new user message that is not a thinking block. A message made only of thinking blocks gets no breakpoint.
+- `max_tokens` is the model's maximum (128000, or 64000 for Haiku 4.5). `MAX_TOKENS` is an optional ceiling, used only when it is lower.
+- A `pause_turn` continues within the same turn, for at most 5 continuations, and still saves one assistant message.
+- `stop_reason` and `thinking_ms` are stored on `usage`. A `max_tokens` stop shows "Claude hit the maximum length for this message." and a Continue button.
+- Changing effort or model mid-conversation costs one cache miss on the next turn. That is expected.
 - `stream_chat` joins the web and docs system instructions with a blank line when both apply. Either one alone is sent by itself. Neither means no system prompt.
 - Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button.
 - `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
@@ -74,12 +78,12 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 
 Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/app/llm.py`, the web settings in `backend/app/config.py`, chat routes and `slim_message` in `backend/app/main.py`, `frontend/src/websearch.ts`, `frontend/src/WebActivity.tsx`, `frontend/src/Message.tsx`, the header in `frontend/src/App.tsx`.
 
-- The header has Web and Docs toggles next to the model picker. Each is per turn, defaults to off, and is remembered in `localStorage` (`tangents-web-search`, `tangents-doc-search`). Both sit outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work. Docs is disabled while the conversation has no documents.
+- The header has Web and Docs toggles. Each is per turn, defaults to off, and is remembered in `localStorage` (`tangents-web-search`, `tangents-doc-search`). Both sit outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work. Docs is disabled while the conversation has no documents. The model menu is next to Send and has its own outside-click handling.
 - Search is never forced. With the toggle on, `tool_choice` stays unset and a system instruction tells Claude to look up facts that can change, recent events, specific pages, and anything it is not sure is still true, and not to answer those from memory. A turn that does not search is still correct when the conversation itself is enough. The instruction is omitted when the toggle is off.
 - Both tools are Anthropic server tools (`web_search_20260318`, `web_fetch_20260318`), so a turn that searches is still one request and one saved assistant message. No `tool_use` or `tool_result` rows ever enter the tree. Do not replace these with a client-side search library without redesigning how tool rows live in a forkable tree. Both tools set `allowed_callers` to `["direct"]`. The SDK default includes code-execution callers, and Haiku 4.5 rejects that.
 - `web_fetch` may only fetch URLs the user pasted or that `web_search` returned: `url_sources` sets `user_input` to `all`, `server_tool_results` to `only` naming `web_search`, and `client_tool_results` to `none`. Keep that policy.
 - Stored web blocks are replayed on every later turn, so `_attach_web_tools` declares the tools whenever `history_has_web_blocks(path)` is true even if the toggle is off, and then sets `tool_choice` to `{"type": "none"}`. Without this, toggling search off mid-thread and forking from a searched reply both break.
-- `encrypted_content` and fetched page text are stripped from HTTP responses by `slim_message`, applied only to the `done` event and `GET /api/threads/{id}/messages`. Stored rows keep the full blocks, because the API requires encrypted content back unmodified. `slim_message` must never mutate its input.
+- `encrypted_content`, fetched page text, thinking `signature`, and redacted thinking `data` are stripped from HTTP responses by `slim_message`, applied only to the `done` event and `GET /api/threads/{id}/messages`. Stored rows keep the full blocks, because the API requires encrypted content back unmodified. `slim_message` must never mutate its input.
 - A finished assistant message with web blocks shows a collapsible "Searched the web" row listing source links. During the stream, `web_activity` and `web_result` events show what is being searched or read. The row is `select-none` so selecting a source title does not trigger the fork popover.
 - The usage footer adds `searches` and `fetches` from `usage.server_tool_use`, shown only when non-zero. The four existing counters keep their order and wording.
 - Tool-level failures (`too_many_requests`, `url_not_allowed`, `max_uses_exceeded`, `url_not_in_prior_context`) come back as error blocks inside a result block, so the turn still succeeds and saves. Only a hard API error rolls the turn back.
@@ -90,9 +94,9 @@ Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/
 
 ## Model and theme
 
-Files: `frontend/src/models.ts`, `frontend/src/theme.ts`, the header in `frontend/src/App.tsx`.
+Files: `frontend/src/models.ts`, `frontend/src/ModelMenu.tsx`, `frontend/src/Composer.tsx`, `frontend/src/ModelMenu.test.tsx`, `frontend/src/theme.ts`, the header in `frontend/src/App.tsx`.
 
-- The header picker chooses the model for that turn and remembers it in the browser. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5.
+- The model menu sits next to Send. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, and Haiku 4.5. Effort runs from Low to Max on the three 5.x models, with defaults of high, medium, and high. Haiku has no effort setting and has an Extended thinking toggle with a budget of 16000. Model, effort per model, and extended thinking are stored in `localStorage` (`tangents-model`, `tangents-effort`, `tangents-extended-thinking`). The menu has its own outside-click handling, separate from `menuRef`.
 - Dark mode follows the system until toggled; the choice is stored in `localStorage`.
 
 ## Node delete
