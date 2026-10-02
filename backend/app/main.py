@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -94,6 +95,8 @@ class NewMessage(BaseModel):
     model: str | None = None
     web: bool = False
     docs: bool = False
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    extended_thinking: bool = False
 
 
 class NewThread(BaseModel):
@@ -128,6 +131,10 @@ def _slim_blocks(blocks: list) -> list:
                         for item in content
                     ],
                 }
+        elif block_type == "thinking":
+            block = {key: value for key, value in block.items() if key != "signature"}
+        elif block_type == "redacted_thinking":
+            block = {"type": "redacted_thinking"}
         elif block_type == "web_fetch_tool_result":
             content = block.get("content")
             document = content.get("content") if isinstance(content, dict) else None
@@ -317,7 +324,15 @@ def _name_first_turn(conn, thread_id: str, content: str, undo: dict, reply_text:
             logger.exception("could not store the fallback title")
 
 
-def _chat_events(thread_id: str, content: str, model: str | None, web: bool, docs: bool) -> Iterator[str]:
+def _chat_events(
+    thread_id: str,
+    content: str,
+    model: str | None,
+    web: bool,
+    docs: bool,
+    effort: str | None = None,
+    extended_thinking: bool = False,
+) -> Iterator[str]:
     conn = connect()
     message_id: str | None = None
     undo: dict = {}
@@ -363,9 +378,19 @@ def _chat_events(thread_id: str, content: str, model: str | None, web: bool, doc
 
         try:
             done: dict | None = None
-            for event in stream_chat(path, goal, model, web=web, docs=bool(blocks)):
+            for event in stream_chat(
+                path,
+                goal,
+                model,
+                web=web,
+                docs=bool(blocks),
+                effort=effort,
+                extended_thinking=extended_thinking,
+            ):
                 if event["type"] == "delta":
                     yield _sse("delta", {"text": event["text"]})
+                elif event["type"] == "thinking":
+                    yield _sse("thinking", {"text": event["text"]})
                 elif event["type"] == "compaction":
                     yield _sse("compaction", {"content": event["content"]})
                 elif event["type"] == "web_activity":
@@ -385,7 +410,14 @@ def _chat_events(thread_id: str, content: str, model: str | None, web: bool, doc
                 usage=done["usage"],
             )
             message_id = None
-            _name_first_turn(conn, thread_id, content, undo, text_of(done["content"]))
+            reply_text = text_of(done["content"])
+            if reply_text:
+                _name_first_turn(conn, thread_id, content, undo, reply_text)
+            elif undo.get("first_turn"):
+                try:
+                    rename_thread(conn, thread_id, short_title(content))
+                except Exception:
+                    logger.exception("could not store the fallback title")
             yield _sse("done", slim_message(assistant))
         except LLMError as exc:
             _fail_turn(conn, thread_id, message_id, undo)
@@ -418,7 +450,15 @@ async def post_message(thread_id: str, body: NewMessage) -> StreamingResponse:
 
     def worker() -> None:
         try:
-            for chunk in _chat_events(thread_id, content, body.model, body.web, body.docs):
+            for chunk in _chat_events(
+                thread_id,
+                content,
+                body.model,
+                body.web,
+                body.docs,
+                body.effort,
+                body.extended_thinking,
+            ):
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
         except Exception as exc:
             logger.exception("chat stream failed")

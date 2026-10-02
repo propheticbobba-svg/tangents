@@ -3,6 +3,7 @@ import type { Conversation, DocumentInfo, Message, Thread, ThreadView, Tree, Web
 export type ChatEvent =
   | { event: "user_message"; data: Message }
   | { event: "delta"; data: { text: string } }
+  | { event: "thinking"; data: { text: string } }
   | { event: "compaction"; data: { content: string } }
   | { event: "web_activity"; data: { tool: string; query: string; url: string } }
   | { event: "web_result"; data: { tool: string; sources: WebSource[] } }
@@ -101,12 +102,14 @@ export async function streamMessage(
   model: string,
   web: boolean,
   docs: boolean,
+  effort: string | null,
+  extendedThinking: boolean,
   onEvent: (event: ChatEvent) => void,
 ): Promise<void> {
   const response = await fetch(`/api/threads/${threadId}/messages`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ content, model, web, docs }),
+    body: JSON.stringify({ content, model, web, docs, effort, extended_thinking: extendedThinking }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await errorMessage(response));

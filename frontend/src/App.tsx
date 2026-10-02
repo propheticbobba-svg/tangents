@@ -18,7 +18,18 @@ import { DocumentsPanel } from "./DocumentsPanel";
 import { ResizeHandle } from "./ResizeHandle";
 import { TreeView } from "./TreeView";
 import { loadDocSearch, saveDocSearch } from "./docsearch";
-import { MODELS, loadModel, saveModel, type ModelId } from "./models";
+import { ModelMenu } from "./ModelMenu";
+import {
+  loadEffort,
+  loadExtendedThinking,
+  loadModel,
+  modelInfo,
+  saveEffort,
+  saveExtendedThinking,
+  saveModel,
+  type Effort,
+  type ModelId,
+} from "./models";
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from "./sidebar";
 import { loadWebSearch, saveWebSearch } from "./websearch";
 import { useTheme } from "./theme";
@@ -62,6 +73,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [model, setModel] = useState<ModelId>(loadModel);
+  const [effort, setEffort] = useState<Effort | null>(() => loadEffort(loadModel()));
+  const [extended, setExtended] = useState<boolean>(loadExtendedThinking);
   const [web, setWeb] = useState<boolean>(loadWebSearch);
   const [docs, setDocs] = useState<boolean>(loadDocSearch);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
@@ -232,54 +245,79 @@ export function App() {
     setSending(true);
     setError(null);
     setDraft("");
-    setStreaming({ text: "", summaries: [], activity: [] });
+    const info = modelInfo(model);
+    setStreaming({
+      text: "",
+      summaries: [],
+      activity: [],
+      thinking: "",
+      thinkingStartedAt: null,
+      thinkingEndedAt: null,
+    });
     let failed = false;
     try {
-      await streamMessage(targetThreadId, content, model, web, docs && documents.length > 0, (event) => {
+      await streamMessage(
+        targetThreadId,
+        content,
+        model,
+        web,
+        docs && documents.length > 0,
+        info.efforts.length ? effort : null,
+        info.thinking === "extended" && extended,
+        (event) => {
         if (event.event === "user_message") {
           setView((current) =>
             current && current.thread.id === targetThreadId
               ? { ...current, messages: [...current.messages, event.data] }
               : current,
           );
+        } else if (event.event === "thinking") {
+          setStreaming((current) =>
+            current && {
+              ...current,
+              thinking: current.thinking + event.data.text,
+              thinkingStartedAt: current.thinkingStartedAt ?? Date.now(),
+            },
+          );
         } else if (event.event === "delta") {
-          setStreaming((current) => ({
-            text: (current?.text ?? "") + event.data.text,
-            summaries: current?.summaries ?? [],
-            activity: current?.activity ?? [],
-          }));
+          setStreaming((current) =>
+            current && {
+              ...current,
+              text: current.text + event.data.text,
+              thinkingEndedAt:
+                current.thinkingStartedAt !== null && current.thinkingEndedAt === null
+                  ? Date.now()
+                  : current.thinkingEndedAt,
+            },
+          );
         } else if (event.event === "compaction") {
-          setStreaming((current) => ({
-            text: current?.text ?? "",
-            summaries: [...(current?.summaries ?? []), event.data.content],
-            activity: current?.activity ?? [],
-          }));
+          setStreaming((current) =>
+            current && { ...current, summaries: [...current.summaries, event.data.content] },
+          );
         } else if (event.event === "web_activity") {
           const label =
             event.data.tool === "web_fetch"
               ? `Reading ${event.data.url}`
               : `Searching for ${event.data.query}`;
-          setStreaming((current) => ({
-            text: current?.text ?? "",
-            summaries: current?.summaries ?? [],
-            activity: [...(current?.activity ?? []), label],
-          }));
+          setStreaming((current) => current && { ...current, activity: [...current.activity, label] });
         } else if (event.event === "web_result") {
-          setStreaming((current) => ({
-            text: current?.text ?? "",
-            summaries: current?.summaries ?? [],
-            activity: [
-              ...(current?.activity ?? []),
-              `Found ${event.data.sources.length} source${event.data.sources.length === 1 ? "" : "s"}`,
-            ],
-          }));
+          setStreaming((current) =>
+            current && {
+              ...current,
+              activity: [
+                ...current.activity,
+                `Found ${event.data.sources.length} source${event.data.sources.length === 1 ? "" : "s"}`,
+              ],
+            },
+          );
         } else if (event.event === "error") {
           failed = true;
           setError(event.data.error);
           setDraft(content);
           setStreaming(null);
         }
-      });
+      },
+      );
       if (conversationId) await refreshLists(conversationId);
       const fresh = await getMessages(targetThreadId);
       setView((current) => (current && current.thread.id === targetThreadId ? fresh : current));
@@ -436,26 +474,6 @@ export function App() {
         >
           New conversation
         </button>
-        <label className="sr-only" htmlFor="model">
-          Model
-        </label>
-        <select
-          id="model"
-          value={model}
-          disabled={sending}
-          onChange={(event) => {
-            const next = event.target.value as ModelId;
-            setModel(next);
-            saveModel(next);
-          }}
-          className="rounded-md border border-line bg-panel px-2 py-1 text-sm"
-        >
-          {MODELS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
         <button
           type="button"
           role="switch"
@@ -534,6 +552,30 @@ export function App() {
             onForkSelection={(messageId, text, mode) => void forkFrom(messageId, mode, text)}
             onSelectThread={(id) => void selectThread(id)}
             onSaveGoal={saveGoal}
+            controls={
+              <ModelMenu
+                model={model}
+                effort={effort}
+                extended={extended}
+                disabled={sending}
+                onModel={(next) => {
+                  setModel(next);
+                  saveModel(next);
+                  setEffort(loadEffort(next));
+                }}
+                onEffort={(level) => {
+                  setEffort(level);
+                  saveEffort(model, level);
+                }}
+                onExtended={(value) => {
+                  setExtended(value);
+                  saveExtendedThinking(value);
+                }}
+              />
+            }
+            onContinue={() => {
+              if (threadId && !sending) void send(threadId, "Continue");
+            }}
           />
           <aside
             ref={asideRef}

@@ -3,7 +3,7 @@
 Prompt caching: each chat request sets at most two explicit breakpoints
 (`cache_control` on a content block), out of the four the API allows.
 
-- One is on the last block of the inherited path: the message the new user
+- One is on the last block of the inherited path that is not a thinking block: the message the new user
   turn attaches to. For the first message in a side node, that is the fork
   point, so sibling forks and the parent thread share the cached prefix.
 - One is on the last block of the new user message, so the next turn in the
@@ -25,12 +25,22 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import time
 from collections.abc import Iterator
 from typing import Any
 
 import anthropic
 
-from app.config import KEY_MISSING, MODEL_MISSING, get_settings, model_supports_compaction
+from app.config import (
+    EFFORT_LEVELS,
+    HAIKU_THINKING_BUDGET,
+    KEY_MISSING,
+    MODEL_MISSING,
+    get_settings,
+    model_caps,
+    model_supports_compaction,
+    resolve_max_tokens,
+)
 from app.db import short_title
 from app.rag import DOCS_INSTRUCTION
 
@@ -49,6 +59,8 @@ TITLE_MODEL = "claude-haiku-4-5"
 TITLE_INPUT_CHARS = 400
 TITLE_MAX_CHARS = 60
 TITLE_MAX_TOKENS = 32
+THINKING_BLOCK_TYPES = ("thinking", "redacted_thinking")
+MAX_PAUSE_CONTINUATIONS = 5
 TITLE_INSTRUCTION = (
     "Reply with only a 2-6 word title. One line. No quotes, no markdown. "
     "Name the topic. If a reply is included, the title must agree with that reply "
@@ -78,13 +90,23 @@ def resolve_model(override: str | None) -> str:
     return chosen
 
 
+def _cacheable_index(blocks: list) -> int | None:
+    """The API rejects cache_control on thinking blocks."""
+    for index in range(len(blocks) - 1, -1, -1):
+        block = blocks[index]
+        if isinstance(block, dict) and block.get("type") not in THINKING_BLOCK_TYPES:
+            return index
+    return None
+
+
 def to_api_messages(path: list[dict], ttl: str) -> list[dict]:
     """Turn a get_context path into Anthropic message params.
 
     Stored content blocks are copied and sent unchanged, except for a
     cache_control breakpoint on the last block of the inherited message and
-    the last block of the new user message. Consecutive same-role turns
-    are concatenated.
+    the last block of the new user message that is not a thinking block.
+    A message made only of thinking blocks gets no breakpoint. Consecutive
+    same-role turns are concatenated.
     """
     if not path:
         return []
@@ -97,10 +119,12 @@ def to_api_messages(path: list[dict], ttl: str) -> list[dict]:
     for index, message in enumerate(path):
         blocks = copy.deepcopy(message["content"])
         if index in breakpoint_indexes and blocks:
-            blocks[-1] = {
-                **blocks[-1],
-                "cache_control": {"type": "ephemeral", "ttl": ttl},
-            }
+            target = _cacheable_index(blocks)
+            if target is not None:
+                blocks[target] = {
+                    **blocks[target],
+                    "cache_control": {"type": "ephemeral", "ttl": ttl},
+                }
         prepared.append({"role": message["role"], "content": blocks})
 
     merged: list[dict[str, Any]] = []
@@ -252,57 +276,72 @@ def _result_sources(block: Any) -> list[dict[str, str]]:
     return sources
 
 
-def stream_chat(
-    path: list[dict],
-    goal: str | None,
-    model: str | None = None,
-    web: bool = False,
-    docs: bool = False,
-) -> Iterator[dict]:
-    """Stream one assistant turn.
+def thinking_params(model: str, effort: str | None, extended: bool) -> dict[str, Any]:
+    """Request fields for the chosen model, matching the Claude app's model menu."""
+    caps = model_caps(model)
+    if caps is None:
+        return {}
+    if caps.thinking == "adaptive":
+        level = effort if effort in EFFORT_LEVELS and effort in caps.efforts else caps.default_effort
+        params: dict[str, Any] = {"thinking": {"type": "adaptive", "display": "summarized"}}
+        if level:
+            params["output_config"] = {"effort": level}
+        return params
+    if extended:
+        return {"thinking": {"type": "enabled", "budget_tokens": HAIKU_THINKING_BUDGET}}
+    return {}
 
-    Yields ``delta`` events, a ``compaction`` event when the API writes a
-    summary, then ``done`` with the raw content blocks and usage.
-    Threshold compaction is attached only when the model for this turn is on
-    the supported list. Stored compaction blocks still go out on the beta
-    endpoint so the API will accept them.
-    """
-    settings = get_settings()
-    chosen = resolve_model(model)
-    messages = to_api_messages(path, settings.cache_ttl)
-    compact = model_supports_compaction(chosen)
-    kwargs: dict[str, Any] = {
-        "model": chosen,
-        "max_tokens": settings.max_tokens,
-        "messages": messages,
-    }
-    _attach_web_tools(kwargs, path, web)
-    instructions = []
-    if web:
-        instructions.append(WEB_TURN_INSTRUCTION)
-    if docs:
-        instructions.append(DOCS_INSTRUCTION)
-    if instructions:
-        kwargs["system"] = "\n\n".join(instructions)
-    if _use_beta(path, compact):
-        kwargs["betas"] = [COMPACTION_BETA]
-        if compact:
-            kwargs["context_management"] = {
-                "edits": [
-                    {
-                        "type": "compact_20260112",
-                        "trigger": {
-                            "type": "input_tokens",
-                            "value": settings.compact_trigger_tokens,
-                        },
-                        "instructions": compaction_instructions(goal),
-                    }
-                ]
-            }
-        stream_cm = _client().beta.messages.stream(**kwargs)
-    else:
-        stream_cm = _client().messages.stream(**kwargs)
 
+def _merge_usage(usages: list[dict]) -> dict:
+    """Add up a continued turn. The input dicts are not mutated."""
+    if not usages:
+        return {}
+    if len(usages) == 1:
+        return dict(usages[0])
+    merged = dict(usages[-1])
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        merged[key] = sum(int(item.get(key) or 0) for item in usages)
+    if any("server_tool_use" in item for item in usages):
+        searches = 0
+        fetches = 0
+        for item in usages:
+            tool = item.get("server_tool_use") or {}
+            searches += int(tool.get("web_search_requests") or 0)
+            fetches += int(tool.get("web_fetch_requests") or 0)
+        merged["server_tool_use"] = {
+            "web_search_requests": searches,
+            "web_fetch_requests": fetches,
+        }
+    if any(
+        isinstance(item.get("output_tokens_details"), dict)
+        and "thinking_tokens" in item["output_tokens_details"]
+        for item in usages
+    ):
+        thinking = 0
+        for item in usages:
+            details = item.get("output_tokens_details") or {}
+            thinking += int(details.get("thinking_tokens") or 0)
+        details = dict(merged.get("output_tokens_details") or {})
+        details["thinking_tokens"] = thinking
+        merged["output_tokens_details"] = details
+    if any("iterations" in item for item in usages):
+        iterations: list = []
+        for item in usages:
+            iterations.extend(item.get("iterations") or [])
+        merged["iterations"] = iterations
+    return merged
+
+
+def _stream_round(kwargs: dict[str, Any], beta: bool, clock: dict) -> Iterator[dict]:
+    """Stream one API request. The return value is the final message."""
+    stream_cm = (
+        _client().beta.messages.stream(**kwargs) if beta else _client().messages.stream(**kwargs)
+    )
     with stream_cm as stream:
         pending: dict[int, dict[str, str]] = {}
         for event in stream:
@@ -325,7 +364,15 @@ def stream_chat(
                 delta = event.delta
                 delta_type = getattr(delta, "type", None)
                 if delta_type == "text_delta":
+                    if clock.get("thinking_started") is not None and clock.get("thinking_ended") is None:
+                        clock["thinking_ended"] = time.monotonic()
                     yield {"type": "delta", "text": delta.text}
+                elif delta_type == "thinking_delta":
+                    text = getattr(delta, "thinking", "") or ""
+                    if text:
+                        if clock.get("thinking_started") is None:
+                            clock["thinking_started"] = time.monotonic()
+                        yield {"type": "thinking", "text": text}
                 elif delta_type == "compaction_delta":
                     yield {"type": "compaction", "content": delta.content or ""}
                 elif delta_type == "input_json_delta":
@@ -336,12 +383,80 @@ def stream_chat(
                 entry = pending.pop(event.index, None)
                 if entry is not None:
                     yield _web_activity(entry)
-        final = stream.get_final_message()
-        yield {
-            "type": "done",
-            "content": [_dump_block(block) for block in final.content],
-            "usage": _dump_usage(final.usage),
-        }
+        return stream.get_final_message()
+
+
+def stream_chat(
+    path: list[dict],
+    goal: str | None,
+    model: str | None = None,
+    web: bool = False,
+    docs: bool = False,
+    effort: str | None = None,
+    extended_thinking: bool = False,
+) -> Iterator[dict]:
+    """Stream one assistant turn.
+
+    Yields ``thinking`` and ``delta`` events, a ``compaction`` event when the
+    API writes a summary, then ``done`` with the raw content blocks and usage.
+    A ``pause_turn`` is continued inside this same turn. Threshold compaction
+    is attached only when the model for this turn is on the supported list.
+    Stored compaction blocks still go out on the beta endpoint so the API will
+    accept them.
+    """
+    settings = get_settings()
+    chosen = resolve_model(model)
+    messages = to_api_messages(path, settings.cache_ttl)
+    compact = model_supports_compaction(chosen)
+    kwargs: dict[str, Any] = {
+        "model": chosen,
+        "max_tokens": resolve_max_tokens(chosen),
+        "messages": messages,
+    }
+    _attach_web_tools(kwargs, path, web)
+    instructions = []
+    if web:
+        instructions.append(WEB_TURN_INSTRUCTION)
+    if docs:
+        instructions.append(DOCS_INSTRUCTION)
+    if instructions:
+        kwargs["system"] = "\n\n".join(instructions)
+    beta = _use_beta(path, compact)
+    if beta:
+        kwargs["betas"] = [COMPACTION_BETA]
+        if compact:
+            kwargs["context_management"] = {
+                "edits": [
+                    {
+                        "type": "compact_20260112",
+                        "trigger": {
+                            "type": "input_tokens",
+                            "value": settings.compact_trigger_tokens,
+                        },
+                        "instructions": compaction_instructions(goal),
+                    }
+                ]
+            }
+    kwargs.update(thinking_params(chosen, effort, extended_thinking))
+
+    clock: dict = {}
+    blocks: list[dict] = []
+    usages: list[dict] = []
+    stop_reason = None
+    for _ in range(MAX_PAUSE_CONTINUATIONS + 1):
+        final = yield from _stream_round(kwargs, beta, clock)
+        blocks.extend(_dump_block(block) for block in final.content)
+        usages.append(_dump_usage(final.usage))
+        stop_reason = getattr(final, "stop_reason", None)
+        if stop_reason != "pause_turn":
+            break
+        kwargs["messages"] = [*messages, {"role": "assistant", "content": copy.deepcopy(blocks)}]
+    usage = _merge_usage(usages)
+    usage["stop_reason"] = stop_reason
+    started, ended = clock.get("thinking_started"), clock.get("thinking_ended")
+    if started is not None:
+        usage["thinking_ms"] = int(((ended or time.monotonic()) - started) * 1000)
+    yield {"type": "done", "content": blocks, "usage": usage}
 
 
 def title_excerpt(text: str) -> str:

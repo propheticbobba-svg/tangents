@@ -103,4 +103,54 @@ describe("MessageView fork button", () => {
     expect(bubble?.textContent).toBe("What was hidden?");
     expect(bubble?.textContent).not.toContain("basement journals");
   });
+
+  it("shows a cut-off notice and continues from it", () => {
+    const onContinue = vi.fn();
+    render(
+      <MessageView
+        message={message("assistant", {
+          usage: {
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            stop_reason: "max_tokens",
+          },
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+        onContinue={onContinue}
+      />,
+    );
+
+    expect(screen.getByText("Claude hit the maximum length for this message.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(onContinue).toHaveBeenCalledOnce();
+  });
+
+  it("shows a collapsed thinking section", () => {
+    render(
+      <MessageView
+        message={message("assistant", {
+          content: [
+            { type: "thinking", thinking: "I weighed the options." },
+            { type: "text", text: "Hello from the model" },
+          ],
+          usage: {
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            thinking_ms: 4000,
+          },
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+
+    const thinking = screen.getByRole("button", { name: "Thought for 4s" });
+    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("I weighed the options.")).toBeNull();
+  });
 });

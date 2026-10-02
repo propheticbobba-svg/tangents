@@ -279,7 +279,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         seen["model"] = model
         yield {
             "type": "done",
@@ -302,7 +302,7 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         seen["ids"] = [message["id"] for message in path]
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -347,7 +347,7 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         text = "answer " + path[-1]["content"][0]["text"]
         yield {"type": "delta", "text": text}
         yield {
@@ -403,7 +403,7 @@ def test_title_falls_back_and_a_later_turn_keeps_it(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None, web=False, docs=False: iter(
+        lambda path, goal, model=None, web=False, docs=False, **_extra: iter(
             [
                 {
                     "type": "done",
@@ -445,7 +445,7 @@ def test_goal_can_be_edited_and_is_not_overwritten_by_a_later_message(client, mo
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr(
         "app.main.stream_chat",
-        lambda path, goal, model=None, web=False, docs=False: iter(
+        lambda path, goal, model=None, web=False, docs=False, **_extra: iter(
             [
                 {
                     "type": "done",
@@ -497,7 +497,7 @@ def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         seen["web"] = web
         yield {
             "type": "done",
@@ -583,7 +583,7 @@ def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         yield {
             "type": "done",
             "content": [
@@ -662,7 +662,7 @@ def test_upload_rejects_unknown_conversation_bad_type_and_oversize(client, small
 
 
 def _reply_stream(seen):
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         seen["docs"] = docs
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -729,7 +729,7 @@ def test_failed_docs_turn_drops_the_passages(client, monkeypatch):
     use_fake_embedder(monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
         raise LLMError("nope")
 
     monkeypatch.setattr("app.main.stream_chat", fake_stream)
@@ -744,3 +744,30 @@ def test_failed_docs_turn_drops_the_passages(client, monkeypatch):
     )
     assert parse_sse(response.text)[-1][0] == "error"
     assert client.get(f"/api/threads/{center_id}/messages").json()["messages"] == []
+
+
+def test_slim_message_drops_thinking_secrets_without_mutating():
+    from app.main import slim_message
+
+    original = {
+        "id": "m",
+        "role": "assistant",
+        "content": [
+            {"type": "thinking", "thinking": "visible", "signature": "secret-sig"},
+            {"type": "redacted_thinking", "data": "secret-data"},
+        ],
+    }
+    snapshot = json.loads(json.dumps(original))
+    slim = slim_message(original)
+    assert slim["content"][0] == {"type": "thinking", "thinking": "visible"}
+    assert slim["content"][1] == {"type": "redacted_thinking"}
+    assert original == snapshot
+
+
+def test_unknown_effort_is_rejected(client):
+    _conversation_id, center_id = create_conversation(client)
+    response = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello", "effort": "turbo"},
+    )
+    assert response.status_code == 422
