@@ -54,10 +54,11 @@ Files: `frontend/src/sidebar.ts`, `frontend/src/ResizeHandle.tsx`, the `<aside>`
 
 ## Pinned goal
 
-Files: `frontend/src/PinnedGoal.tsx`, `update_goal` in `backend/app/db.py`, `PATCH /api/conversations/{id}`.
+Files: `frontend/src/PinnedGoal.tsx`, `frontend/src/PinnedGoal.test.tsx`, the `<section>` in `frontend/src/ChatPane.tsx`, `update_goal` in `backend/app/db.py`, `PATCH /api/conversations/{id}`.
 
 - The goal starts as the center node's first user message, and only while `goal` is still null. Editing it does not change the transcript. Later messages do not overwrite an edited goal.
 - It stays at the top of every node, truncated to two lines, expandable. Enter or blur saves; Esc cancels.
+- The collapsed goal is clamped by `line-clamp-2` alone. Do not add a display class (`block`, `flex`, ...) next to it: that overrides the `-webkit-box` display the clamp needs, and a long first prompt then fills the whole pane. Expanded, it is capped at `max-h-48` and scrolls, keeping line breaks. The chat `<section>` is `min-h-0 overflow-hidden`, so nothing above the message list can push the composer off screen. `frontend/src/PinnedGoal.test.tsx` covers the classes.
 
 ## Streaming, cache, and compaction
 

@@ -91,7 +91,9 @@ export function PinnedGoal({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className={`mt-1 block w-full text-left font-serif text-sm ${expanded ? "" : "line-clamp-2"}`}
+        className={`mt-1 w-full text-left font-serif text-sm ${
+          expanded ? "block max-h-48 overflow-y-auto whitespace-pre-wrap" : "line-clamp-2"
+        }`}
       >
         {goal}
       </button>
