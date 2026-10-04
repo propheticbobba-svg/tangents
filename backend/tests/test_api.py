@@ -279,7 +279,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         seen["model"] = model
         yield {
             "type": "done",
@@ -302,7 +302,7 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         seen["ids"] = [message["id"] for message in path]
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -347,7 +347,7 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         text = "answer " + path[-1]["content"][0]["text"]
         yield {"type": "delta", "text": text}
         yield {
@@ -497,7 +497,7 @@ def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         seen["web"] = web
         yield {
             "type": "done",
@@ -516,6 +516,31 @@ def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch)
     )
     assert parse_sse(second.text)[-1][0] == "done"
     assert seen["web"] is True
+
+
+def test_charts_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+    seen = {}
+
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+        seen["charts"] = charts
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    _conversation_id, center_id = create_conversation(client)
+    first = client.post(f"/api/threads/{center_id}/messages", json={"content": "Hello"})
+    assert parse_sse(first.text)[-1][0] == "done"
+    assert seen["charts"] is False
+    second = client.post(
+        f"/api/threads/{center_id}/messages",
+        json={"content": "Hello again", "charts": True},
+    )
+    assert parse_sse(second.text)[-1][0] == "done"
+    assert seen["charts"] is True
 
 
 def test_search_results_are_stored_whole_but_trimmed_for_the_browser(client):
@@ -583,7 +608,7 @@ def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         yield {
             "type": "done",
             "content": [
@@ -662,7 +687,7 @@ def test_upload_rejects_unknown_conversation_bad_type_and_oversize(client, small
 
 
 def _reply_stream(seen):
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         seen["docs"] = docs
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -729,7 +754,7 @@ def test_failed_docs_turn_drops_the_passages(client, monkeypatch):
     use_fake_embedder(monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
         raise LLMError("nope")
 
     monkeypatch.setattr("app.main.stream_chat", fake_stream)

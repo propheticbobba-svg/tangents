@@ -50,7 +50,7 @@ export function ThinkingSection({
       </button>
       {open && text && (
         <div className="mt-1 border-l-2 border-line pl-3">
-          <Markdown text={text} />
+          <Markdown text={text} streaming={live} />
         </div>
       )}
     </div>
