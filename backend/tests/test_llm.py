@@ -14,6 +14,7 @@ from app.llm import (
     WEB_BLOCK_TYPES,
     WEB_FETCH_TOOL_TYPE,
     WEB_SEARCH_TOOL_TYPE,
+    CHARTS_INSTRUCTION,
     WEB_TURN_INSTRUCTION,
     _attach_web_tools,
     _result_sources,
@@ -22,6 +23,7 @@ from app.llm import (
     history_has_compaction,
     history_has_web_blocks,
     stream_chat,
+    strip_chart_blocks,
     suggest_title,
     thinking_params,
     to_api_messages,
@@ -359,6 +361,36 @@ def test_web_turn_tells_the_model_to_look_up_current_facts(monkeypatch):
 
     list(stream_chat(path, None, "claude-haiku-4-5", web=True, docs=True))
     assert messages.kwargs["system"] == f"{WEB_TURN_INSTRUCTION}\n\n{DOCS_INSTRUCTION}"
+
+    list(stream_chat(path, None, "claude-haiku-4-5", charts=True))
+    assert messages.kwargs["system"] == CHARTS_INSTRUCTION
+    assert "tools" not in messages.kwargs
+
+    list(stream_chat(path, None, "claude-haiku-4-5", web=True, docs=True, charts=True))
+    assert (
+        messages.kwargs["system"]
+        == f"{WEB_TURN_INSTRUCTION}\n\n{DOCS_INSTRUCTION}\n\n{CHARTS_INSTRUCTION}"
+    )
+
+
+def test_strip_chart_blocks_removes_closed_and_unclosed_blocks():
+    closed = 'Sales rose.\n\n```plotly\n{"data":[]}\n```\nThat is the trend.'
+    assert strip_chart_blocks(closed) == "Sales rose.\n\n \nThat is the trend."
+    unclosed = 'Sales rose.\n```plotly\n{"data":['
+    assert strip_chart_blocks(unclosed) == "Sales rose.\n "
+    python = "```python\nprint(1)\n```"
+    assert strip_chart_blocks(python) == python
+
+
+def test_suggest_title_ignores_chart_json(monkeypatch):
+    messages = _Messages(text="LeBron joins the 76ers")
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    reply = 'Sales rose.\n\n```plotly\n{"data":[]}\n```'
+    assert suggest_title("what team does lebron play for rn", reply) == "LeBron joins the 76ers"
+    prompt = messages.kwargs["messages"][0]["content"]
+    assert "Sales rose." in prompt
+    assert '"data"' not in prompt
 
 
 def test_breakpoint_skips_a_trailing_thinking_block():

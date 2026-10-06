@@ -35,7 +35,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 
 Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/app/db.py`, `_name_first_turn` in `backend/app/main.py`, `frontend/src/TreeView.tsx`, `frontend/src/Breadcrumb.tsx`.
 
-- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. A reply with no text gets that same 40-character fallback, and the title model is not called. Later messages do not rename the node. Introduced on `haiku-node-titles`.
+- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. A reply with no text gets that same 40-character fallback, and the title model is not called. Later messages do not rename the node. Fenced `plotly` blocks are removed from the reply before the title call. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
 - The center node stays on the tree after a fork. Cards are remeasured when the graph changes, so an existing node is not left hidden when its size did not change.
 - Side-node cards show Delete on hover; the center card does not. Clicking Delete does not switch nodes. `frontend/src/TreeView.test.tsx` covers both.
@@ -70,7 +70,7 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 - A `pause_turn` continues within the same turn, for at most 5 continuations, and still saves one assistant message.
 - `stop_reason` and `thinking_ms` are stored on `usage`. A `max_tokens` stop shows "Claude hit the maximum length for this message." and a Continue button.
 - Changing effort or model mid-conversation costs one cache miss on the next turn. That is expected.
-- `stream_chat` joins the web and docs system instructions with a blank line when both apply. Either one alone is sent by itself. Neither means no system prompt.
+- `stream_chat` joins the web, docs, and charts system instructions, in that order, with a blank line. Any one alone is sent by itself. None means no system prompt.
 - Compaction uses `compact-2026-01-12` when the chosen model supports it. The summary must restate the pinned goal. The chat shows Compacted here above that message; expanding it shows the summary. Older messages stay. There is no manual compact button.
 - `CACHE_TTL` is `5m` or `1h`. `COMPACT_TRIGGER_TOKENS` defaults to 150000 and refuses values under 50000. The API key stays on the server.
 
@@ -78,7 +78,7 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 
 Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/app/llm.py`, the web settings in `backend/app/config.py`, chat routes and `slim_message` in `backend/app/main.py`, `frontend/src/websearch.ts`, `frontend/src/WebActivity.tsx`, `frontend/src/Message.tsx`, the header in `frontend/src/App.tsx`.
 
-- The header has Web and Docs toggles. Each is per turn, defaults to off, and is remembered in `localStorage` (`tangents-web-search`, `tangents-doc-search`). Both sit outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work. Docs is disabled while the conversation has no documents. The model menu is next to Send and has its own outside-click handling.
+- The header has Web, Docs, and Charts toggles. Each is per turn, defaults to off, and is remembered in `localStorage` (`tangents-web-search`, `tangents-doc-search`, `tangents-charts`). All three sit outside `menuRef` so the conversation dropdown's outside-click and Escape handlers still work. Docs is disabled while the conversation has no documents. The model menu is next to Send and has its own outside-click handling.
 - Search is never forced. With the toggle on, `tool_choice` stays unset and a system instruction tells Claude to look up facts that can change, recent events, specific pages, and anything it is not sure is still true, and not to answer those from memory. A turn that does not search is still correct when the conversation itself is enough. The instruction is omitted when the toggle is off.
 - Both tools are Anthropic server tools (`web_search_20260318`, `web_fetch_20260318`), so a turn that searches is still one request and one saved assistant message. No `tool_use` or `tool_result` rows ever enter the tree. Do not replace these with a client-side search library without redesigning how tool rows live in a forkable tree. Both tools set `allowed_callers` to `["direct"]`. The SDK default includes code-execution callers, and Haiku 4.5 rejects that.
 - `web_fetch` may only fetch URLs the user pasted or that `web_search` returned: `url_sources` sets `user_input` to `all`, `server_tool_results` to `only` naming `web_search`, and `client_tool_results` to `none`. Keep that policy.
@@ -124,6 +124,33 @@ Files: `backend/app/rag.py`, `backend/app/pdf.py`, the `documents` / `chunks` / 
 - A user message with those blocks shows a collapsible "Searched your documents" row. It is `select-none`.
 - Tests never download the embedding model; they use a fake embedder. PDF tests use fake layout, OCR, and table engines and never download those models. `backend/scripts/bench_pdf.py` is not a pytest test; it uses the real models.
 - Introduced on `pdf-layout-ocr`.
+
+## Charts
+
+Files: `frontend/src/chart.ts`, `frontend/src/PlotlyChart.tsx`, `frontend/src/plotly-dist-min.d.ts`, `frontend/src/charts.ts`, `Markdown` in `frontend/src/Message.tsx`, `CHARTS_INSTRUCTION` / `strip_chart_blocks` in `backend/app/llm.py`, the `charts` flag in `backend/app/main.py`, and the tests.
+
+- The header Charts toggle is per turn, off by default, stored in `localStorage` (`tangents-charts`), and sits outside `menuRef`.
+- With it on, `CHARTS_INSTRUCTION` is the last system instruction.
+- A fenced `plotly` block with `{data, layout}` JSON renders as an interactive Plotly chart (2D and 3D). While streaming it shows "Drawing chart…". Bad JSON shows "Could not draw this chart." and the raw code.
+- Charts follow dark mode and resize with the sidebar. The chart is `select-none`.
+- `layout.images` and `layout.width` are dropped, and the model's `config` is ignored.
+- Plotly loads only through a dynamic import.
+- No tools, no tool rows, and stored content is never edited.
+- Toggling Charts costs one cache miss on the next turn.
+- Introduced on `plotly-charts`.
+
+## Markdown tables
+
+Files: `Markdown` in `frontend/src/Message.tsx`, `frontend/src/index.css`, `frontend/src/Message.test.tsx`.
+
+- A GitHub-flavored pipe table renders inside `.markdown-table`. That wrapper is `max-width: 100%` and `overflow-x: auto`, so a wide table scrolls inside the message. The transcript scroller does not gain a horizontal scrollbar from the table.
+- The table is `width: 100%`. Cells have `min-width: 8rem`, so many columns overflow the wrapper and scroll. Cell text wraps. There is no `width: max-content` and no `max-width` on the cells.
+- Chrome uses `--line` and `--panel`. The header is weight 600. The last row has no bottom border. There are no vertical rules.
+- Default alignment is left, in CSS, so the browser's centered header does not show. `remark-gfm` alignment arrives as an inline `text-align` style from `react-markdown`, and that style wins over the default. Attribute selectors for `align="center"` and `align="right"` stay in the stylesheet for any leftover `align` attributes.
+- Cell text is selectable. The wrapper and the cells are not `select-none`.
+- A pipe block with no `| --- |` row is not turned into a table. Streaming does not repair a half-written table.
+- No new dependency, no system prompt, and stored message text is not rewritten.
+- Introduced on `style-markdown-tables`.
 
 ## Removed
 

@@ -95,6 +95,7 @@ class NewMessage(BaseModel):
     model: str | None = None
     web: bool = False
     docs: bool = False
+    charts: bool = False
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     extended_thinking: bool = False
 
@@ -332,6 +333,7 @@ def _chat_events(
     docs: bool,
     effort: str | None = None,
     extended_thinking: bool = False,
+    charts: bool = False,
 ) -> Iterator[str]:
     conn = connect()
     message_id: str | None = None
@@ -386,6 +388,7 @@ def _chat_events(
                 docs=bool(blocks),
                 effort=effort,
                 extended_thinking=extended_thinking,
+                charts=charts,
             ):
                 if event["type"] == "delta":
                     yield _sse("delta", {"text": event["text"]})
@@ -458,6 +461,7 @@ async def post_message(thread_id: str, body: NewMessage) -> StreamingResponse:
                 body.docs,
                 body.effort,
                 body.extended_thinking,
+                charts=body.charts,
             ):
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
         except Exception as exc:

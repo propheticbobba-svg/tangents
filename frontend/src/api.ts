@@ -102,6 +102,7 @@ export async function streamMessage(
   model: string,
   web: boolean,
   docs: boolean,
+  charts: boolean,
   effort: string | null,
   extendedThinking: boolean,
   onEvent: (event: ChatEvent) => void,
@@ -109,7 +110,7 @@ export async function streamMessage(
   const response = await fetch(`/api/threads/${threadId}/messages`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ content, model, web, docs, effort, extended_thinking: extendedThinking }),
+    body: JSON.stringify({ content, model, web, docs, charts, effort, extended_thinking: extendedThinking }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await errorMessage(response));

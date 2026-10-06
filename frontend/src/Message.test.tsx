@@ -1,7 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageView } from "./Message";
+import { Markdown, MessageView } from "./Message";
 import type { Message } from "./types";
+
+const plotly = vi.hoisted(() => ({
+  react: vi.fn(() => Promise.resolve()),
+  purge: vi.fn(),
+  Plots: { resize: vi.fn() },
+}));
+vi.mock("plotly.js-dist-min", () => ({ default: plotly }));
 
 function message(role: Message["role"], overrides: Partial<Message> = {}): Message {
   return {
@@ -152,5 +159,53 @@ describe("MessageView fork button", () => {
     const thinking = screen.getByRole("button", { name: "Thought for 4s" });
     expect(thinking.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("I weighed the options.")).toBeNull();
+  });
+
+  it("keeps Fork sticky when the message contains a chart", () => {
+    render(
+      <MessageView
+        message={message("assistant", {
+          content: [
+            {
+              type: "text",
+              text: 'Here is a chart.\n\n```plotly\n{"data":[{"type":"scatter","y":[1]}]}\n```',
+            },
+          ],
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Fork" });
+    expect(button.className).toContain("sticky");
+    expect(button.className).toContain("bottom-3");
+    expect(stickyContainingBlock(button)).toBe(button.closest("article"));
+    expect(button.closest("p")).toBeNull();
+  });
+});
+
+describe("Markdown tables", () => {
+  const table = "| City | Temp |\n| :--- | ---: |\n| Berlin | 12 |\n| Lisbon | 18 |";
+
+  it("wraps a pipe table and keeps column alignment", () => {
+    const { container } = render(<Markdown text={table} />);
+
+    const wrap = container.querySelector(".markdown-table");
+    expect(wrap).not.toBeNull();
+    expect(wrap?.querySelector("table")).not.toBeNull();
+
+    expect(screen.getByRole("columnheader", { name: "City" }).style.textAlign).toBe("left");
+    expect(screen.getByRole("columnheader", { name: "Temp" }).style.textAlign).toBe("right");
+    const lisbon = screen.getByRole("cell", { name: "18" });
+    expect(lisbon.style.textAlign).toBe("right");
+    expect(lisbon.className.split(/\s+/)).not.toContain("select-none");
+    expect(wrap?.className.split(/\s+/)).not.toContain("select-none");
+  });
+
+  it("leaves a pipe table without a separator row as text", () => {
+    const { container } = render(<Markdown text={"| City | Temp |\n| Berlin | 12 |"} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.querySelector(".markdown-table")).toBeNull();
   });
 });
