@@ -208,4 +208,24 @@ describe("Markdown tables", () => {
     expect(container.querySelector("table")).toBeNull();
     expect(container.querySelector(".markdown-table")).toBeNull();
   });
+
+  it("rebuilds a table that web citations split across text blocks", () => {
+    const { container } = render(
+      <MessageView
+        message={message("assistant", {
+          content: [
+            { type: "text", text: "| Benchmark | Sol |\n| --- | --- |\n| Terminal-Bench 4.0 | " },
+            { type: "text", text: "54.0%" },
+            { type: "text", text: " |\n" },
+          ],
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+
+    expect(container.querySelector(".markdown-table table")).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Benchmark" })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "54.0%" })).toBeTruthy();
+  });
 });
