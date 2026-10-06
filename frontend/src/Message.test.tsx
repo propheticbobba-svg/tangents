@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Markdown, MessageView } from "./Message";
 import type { Message } from "./types";
 
+const plotly = vi.hoisted(() => ({
+  react: vi.fn(() => Promise.resolve()),
+  purge: vi.fn(),
+  Plots: { resize: vi.fn() },
+}));
+vi.mock("plotly.js-dist-min", () => ({ default: plotly }));
+
 function message(role: Message["role"], overrides: Partial<Message> = {}): Message {
   return {
     id: "msg-1",
@@ -152,6 +159,29 @@ describe("MessageView fork button", () => {
     const thinking = screen.getByRole("button", { name: "Thought for 4s" });
     expect(thinking.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("I weighed the options.")).toBeNull();
+  });
+
+  it("keeps Fork sticky when the message contains a chart", () => {
+    render(
+      <MessageView
+        message={message("assistant", {
+          content: [
+            {
+              type: "text",
+              text: 'Here is a chart.\n\n```plotly\n{"data":[{"type":"scatter","y":[1]}]}\n```',
+            },
+          ],
+        })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Fork" });
+    expect(button.className).toContain("sticky");
+    expect(button.className).toContain("bottom-3");
+    expect(stickyContainingBlock(button)).toBe(button.closest("article"));
+    expect(button.closest("p")).toBeNull();
   });
 });
 

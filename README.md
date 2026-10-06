@@ -185,6 +185,10 @@ To score extraction on the sample PDF, from `backend/` run `uv run python script
 
 The header **Docs** switch sits next to **Web**. It is off by default and remembered in the browser, and it stays disabled until the conversation has a document. With it on, that turn searches the conversation's documents and saves the passages in the user message, ahead of the typed text. A fork from that reply still sees them. The chat shows a **Searched your documents** row on that message.
 
+## Charts
+
+The header **Charts** switch sits next to **Docs**. It is off by default and remembered in the browser. With it on, Claude may include a chart in the reply when one would make the answer clearer. The chart is interactive: you can zoom a 2D plot and rotate a 3D one. Turning the switch on or off changes the cached prefix, so the next turn in that thread is usually a cache miss.
+
 ## UI
 
 - Left: the chat for the selected node. The pinned goal stays at the top of every node, truncated to two lines, expandable, and editable. Enter or blur saves; Esc cancels.
@@ -194,4 +198,4 @@ The header **Docs** switch sits next to **Web**. It is off by default and rememb
 - Replies stream. Markdown and code blocks are rendered. While Claude thinks, the reply shows **Thinking…** with a running timer. Afterwards, **Thought for Ns** expands to a summary of that reasoning. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
 - The model menu sits next to **Send**. It chooses the model, an effort from Low to Max (each model marks its recommended level **Default**), and, for Haiku 4.5, an **Extended thinking** toggle. Sonnet 5.5, Opus 5.5, and Fable 5.1 always think. The choice is remembered in the browser.
 - If a reply hits the length limit, the message says so and offers **Continue**, which asks Claude to finish.
-- The header has **Web** and **Docs** switches. Both off by default. See [Web search](#web-search) and [Documents](#documents).
+- The header has **Web**, **Docs**, and **Charts** switches. All off by default. See [Web search](#web-search), [Documents](#documents), and [Charts](#charts).

@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -54,6 +55,17 @@ WEB_TURN_INSTRUCTION = (
     "or news — call web_search before you write any answer, then answer from the results. "
     "Do not say you already know, and do not offer to search instead of searching. "
     "Skip the web only when the conversation itself settles the question."
+)
+CHART_LANGUAGE = "plotly"
+CHARTS_INSTRUCTION = (
+    "Charts are available for this turn. When a chart would make the answer clearer "
+    "(data, trends, comparisons, distributions, functions, or 3D surfaces), include a fenced "
+    "code block whose language tag is plotly. Its body must be one valid JSON object of the "
+    'form {"data": [...], "layout": {...}} in Plotly.js format: no comments, no trailing '
+    "commas, no JavaScript, no functions. Write every number out. Keep each trace under 500 "
+    "points, and keep surface grids at or below 40 by 40. For 3D, use scatter3d, surface, or "
+    "mesh3d traces. Write at least one sentence before the chart. Do not mention Plotly or JSON "
+    "to the user. Do not add a chart when it adds nothing."
 )
 TITLE_MODEL = "claude-haiku-4-5"
 TITLE_INPUT_CHARS = 400
@@ -394,6 +406,7 @@ def stream_chat(
     docs: bool = False,
     effort: str | None = None,
     extended_thinking: bool = False,
+    charts: bool = False,
 ) -> Iterator[dict]:
     """Stream one assistant turn.
 
@@ -419,6 +432,8 @@ def stream_chat(
         instructions.append(WEB_TURN_INSTRUCTION)
     if docs:
         instructions.append(DOCS_INSTRUCTION)
+    if charts:
+        instructions.append(CHARTS_INSTRUCTION)
     if instructions:
         kwargs["system"] = "\n\n".join(instructions)
     beta = _use_beta(path, compact)
@@ -459,6 +474,14 @@ def stream_chat(
     yield {"type": "done", "content": blocks, "usage": usage}
 
 
+_CHART_BLOCK = re.compile(r"```" + CHART_LANGUAGE + r"[^\n]*\n.*?(?:```|\Z)", re.DOTALL)
+
+
+def strip_chart_blocks(text: str) -> str:
+    """Plotly JSON is drawn in the browser. It is not prose, so the title model never sees it."""
+    return _CHART_BLOCK.sub(" ", text)
+
+
 def title_excerpt(text: str) -> str:
     """Whitespace-collapsed prefix sent to the title model."""
     collapsed = " ".join(text.split())
@@ -486,6 +509,7 @@ def suggest_title(user_text: str, reply_text: str = "") -> str:
     short_title so the chat turn still gets a name. The reply is included so a
     searched answer cannot be contradicted by a name chosen from memory.
     """
+    reply_text = strip_chart_blocks(reply_text)
     try:
         raw = _fetch_title(user_text, reply_text)
     except LLMError as exc:

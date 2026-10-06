@@ -17,6 +17,7 @@ import { ChatPane } from "./ChatPane";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { ResizeHandle } from "./ResizeHandle";
 import { TreeView } from "./TreeView";
+import { loadCharts, saveCharts } from "./charts";
 import { loadDocSearch, saveDocSearch } from "./docsearch";
 import { ModelMenu } from "./ModelMenu";
 import {
@@ -77,6 +78,7 @@ export function App() {
   const [extended, setExtended] = useState<boolean>(loadExtendedThinking);
   const [web, setWeb] = useState<boolean>(loadWebSearch);
   const [docs, setDocs] = useState<boolean>(loadDocSearch);
+  const [charts, setCharts] = useState<boolean>(loadCharts);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [indexing, setIndexing] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
@@ -262,6 +264,7 @@ export function App() {
         model,
         web,
         docs && documents.length > 0,
+        charts,
         info.efforts.length ? effort : null,
         info.thinking === "extended" && extended,
         (event) => {
@@ -507,6 +510,23 @@ export function App() {
           }`}
         >
           Docs
+        </button>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={charts}
+          aria-label="Let Claude draw charts"
+          disabled={sending}
+          onClick={() => {
+            const next = !charts;
+            setCharts(next);
+            saveCharts(next);
+          }}
+          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
+            charts ? "border-accent text-accent" : "border-line text-muted"
+          }`}
+        >
+          Charts
         </button>
         <div className="flex-1" />
         <button

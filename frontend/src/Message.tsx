@@ -1,6 +1,9 @@
+import type { Element, ElementContent } from "hast";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { CHART_LANGUAGE } from "./chart";
+import { ChartPlaceholder, PlotlyChart } from "./PlotlyChart";
 import { CompactionDivider } from "./CompactionDivider";
 import { DocPassages } from "./DocPassages";
 import { UsageFooter } from "./UsageFooter";
@@ -15,24 +18,48 @@ import {
   type Message as ChatMessage,
 } from "./types";
 
-const MARKDOWN_COMPONENTS: Components = {
-  table({ node, children, ...rest }) {
-    if (!node) return null;
-    return (
-      <div className="markdown-table">
-        <table {...rest}>{children}</table>
-      </div>
-    );
-  },
-};
+function hastText(node: Element | ElementContent): string {
+  if (node.type === "text") return node.value;
+  if ("children" in node) return node.children.map(hastText).join("");
+  return "";
+}
 
-export function Markdown({ text }: { text: string }) {
+function chartSource(node: Element | undefined): string | null {
+  const code = node?.children[0];
+  if (!code || code.type !== "element" || code.tagName !== "code") return null;
+  const classes = code.properties?.className;
+  if (!Array.isArray(classes) || !classes.includes(`language-${CHART_LANGUAGE}`)) return null;
+  return hastText(code);
+}
+
+function chartComponents(streaming: boolean): Components {
+  return {
+    pre({ node, children, ...rest }) {
+      const source = chartSource(node);
+      if (source === null) return <pre {...rest}>{children}</pre>;
+      return streaming ? <ChartPlaceholder /> : <PlotlyChart source={source} />;
+    },
+    table({ node, children, ...rest }) {
+      if (!node) return null;
+      return (
+        <div className="markdown-table">
+          <table {...rest}>{children}</table>
+        </div>
+      );
+    },
+  };
+}
+
+const FINISHED_COMPONENTS = chartComponents(false);
+const STREAMING_COMPONENTS = chartComponents(true);
+
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
   return (
     <div className="markdown text-sm leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        components={MARKDOWN_COMPONENTS}
+        rehypePlugins={[[rehypeHighlight, { plainText: [CHART_LANGUAGE] }]]}
+        components={streaming ? STREAMING_COMPONENTS : FINISHED_COMPONENTS}
       >
         {text}
       </ReactMarkdown>
@@ -168,7 +195,7 @@ export function StreamingMessage({
         </ul>
       )}
       {text ? (
-        <Markdown text={text} />
+        <Markdown text={text} streaming />
       ) : (
         summaries.length === 0 && activity.length === 0 && thinkingStartedAt === null && (
           <p className="text-sm text-muted">Thinking…</p>
