@@ -1,4 +1,4 @@
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { CompactionDivider } from "./CompactionDivider";
@@ -15,10 +15,25 @@ import {
   type Message as ChatMessage,
 } from "./types";
 
+const MARKDOWN_COMPONENTS: Components = {
+  table({ node, children, ...rest }) {
+    if (!node) return null;
+    return (
+      <div className="markdown-table">
+        <table {...rest}>{children}</table>
+      </div>
+    );
+  },
+};
+
 export function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown text-sm leading-relaxed">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={MARKDOWN_COMPONENTS}
+      >
         {text}
       </ReactMarkdown>
     </div>

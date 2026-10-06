@@ -125,6 +125,19 @@ Files: `backend/app/rag.py`, `backend/app/pdf.py`, the `documents` / `chunks` / 
 - Tests never download the embedding model; they use a fake embedder. PDF tests use fake layout, OCR, and table engines and never download those models. `backend/scripts/bench_pdf.py` is not a pytest test; it uses the real models.
 - Introduced on `pdf-layout-ocr`.
 
+## Markdown tables
+
+Files: `Markdown` in `frontend/src/Message.tsx`, `frontend/src/index.css`, `frontend/src/Message.test.tsx`.
+
+- A GitHub-flavored pipe table renders inside `.markdown-table`. That wrapper is `max-width: 100%` and `overflow-x: auto`, so a wide table scrolls inside the message. The transcript scroller does not gain a horizontal scrollbar from the table.
+- The table is `width: 100%`. Cells have `min-width: 8rem`, so many columns overflow the wrapper and scroll. Cell text wraps. There is no `width: max-content` and no `max-width` on the cells.
+- Chrome uses `--line` and `--panel`. The header is weight 600. The last row has no bottom border. There are no vertical rules.
+- Default alignment is left, in CSS, so the browser's centered header does not show. `remark-gfm` alignment arrives as an inline `text-align` style from `react-markdown`, and that style wins over the default. Attribute selectors for `align="center"` and `align="right"` stay in the stylesheet for any leftover `align` attributes.
+- Cell text is selectable. The wrapper and the cells are not `select-none`.
+- A pipe block with no `| --- |` row is not turned into a table. Streaming does not repair a half-written table.
+- No new dependency, no system prompt, and stored message text is not rewritten.
+- Introduced on `style-markdown-tables`.
+
 ## Removed
 
 - Merge back is gone. There is no summary call, no merge route, and no control that copies a side node onto its parent. A side node's messages stay on that node. A stored row with `is_note` still renders as a note; nothing creates new notes.

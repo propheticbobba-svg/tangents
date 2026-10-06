@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageView } from "./Message";
+import { Markdown, MessageView } from "./Message";
 import type { Message } from "./types";
 
 function message(role: Message["role"], overrides: Partial<Message> = {}): Message {
@@ -152,5 +152,30 @@ describe("MessageView fork button", () => {
     const thinking = screen.getByRole("button", { name: "Thought for 4s" });
     expect(thinking.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("I weighed the options.")).toBeNull();
+  });
+});
+
+describe("Markdown tables", () => {
+  const table = "| City | Temp |\n| :--- | ---: |\n| Berlin | 12 |\n| Lisbon | 18 |";
+
+  it("wraps a pipe table and keeps column alignment", () => {
+    const { container } = render(<Markdown text={table} />);
+
+    const wrap = container.querySelector(".markdown-table");
+    expect(wrap).not.toBeNull();
+    expect(wrap?.querySelector("table")).not.toBeNull();
+
+    expect(screen.getByRole("columnheader", { name: "City" }).style.textAlign).toBe("left");
+    expect(screen.getByRole("columnheader", { name: "Temp" }).style.textAlign).toBe("right");
+    const lisbon = screen.getByRole("cell", { name: "18" });
+    expect(lisbon.style.textAlign).toBe("right");
+    expect(lisbon.className.split(/\s+/)).not.toContain("select-none");
+    expect(wrap?.className.split(/\s+/)).not.toContain("select-none");
+  });
+
+  it("leaves a pipe table without a separator row as text", () => {
+    const { container } = render(<Markdown text={"| City | Temp |\n| Berlin | 12 |"} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.querySelector(".markdown-table")).toBeNull();
   });
 });
