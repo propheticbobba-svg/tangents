@@ -109,7 +109,7 @@ export function messageText(content: ContentBlock[]): string {
   return content
     .filter((block) => block.type === "text" && block.text)
     .map((block) => block.text as string)
-    .join("\n\n");
+    .join("");
 }
 
 export function docPassages(content: ContentBlock[]): DocPassage[] {
