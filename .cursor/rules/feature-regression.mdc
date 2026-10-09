@@ -35,7 +35,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 
 Files: `backend/app/llm.py` (`suggest_title`), `note_user_message` in `backend/app/db.py`, `_name_first_turn` in `backend/app/main.py`, `frontend/src/TreeView.tsx`, `frontend/src/Breadcrumb.tsx`.
 
-- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5, using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. A reply with no text gets that same 40-character fallback, and the title model is not called. Later messages do not rename the node. Fenced `plotly` blocks are removed from the reply before the title call. Introduced on `haiku-node-titles`.
+- After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model), using the first 400 characters of that node's first user message and the first 400 characters of the reply text. The title must agree with the reply and must not state a fact the reply contradicts. A name chosen from the user message alone is a regression once a reply can contain facts the title model does not know, which a web search does. A failed, empty, or cut-off title call uses the first 40 characters of the user message. A reply with no text gets that same 40-character fallback, and the title model is not called. Later messages do not rename the node. Fenced `plotly` blocks are removed from the reply before the title call. Introduced on `haiku-node-titles`.
 - Tree cards are as wide as the title and the "Center" / "Side node" label, so the name is not clipped. Hover shows the fork snippet. Click switches node. Children are ordered by fork position, then creation time. The open node is highlighted.
 - The center node stays on the tree after a fork. Cards are remeasured when the graph changes, so an existing node is not left hidden when its size did not change.
 - Side-node cards show Delete on hover; the center card does not. Clicking Delete does not switch nodes. `frontend/src/TreeView.test.tsx` covers both.
@@ -66,7 +66,7 @@ Files: `backend/app/llm.py`, `backend/app/config.py`, `frontend/src/CompactionDi
 
 - A chat turn streams `user_message`, `thinking`, `delta`, `compaction`, `web_activity`, `web_result`, `done`, and `error`. The footer shows `in`, `out`, `cache read`, and `cache write`.
 - Cache breakpoints are added on a deep copy. Stored rows are not mutated. At most two breakpoints: the last block of the inherited path that is not a thinking block, and the last block of the new user message that is not a thinking block. A message made only of thinking blocks gets no breakpoint.
-- `max_tokens` is the model's maximum (128000, or 64000 for Haiku 4.5). `MAX_TOKENS` is an optional ceiling, used only when it is lower.
+- `max_tokens` is the model's maximum (128000 for the four menu models). `MAX_TOKENS` is an optional ceiling, used only when it is lower. `claude-haiku-4-5` remains a server fallback only, with a 64000 ceiling and the old opt-in extended-thinking budget of 16000. It is not in the menu.
 - A `pause_turn` continues within the same turn, for at most 5 continuations, and still saves one assistant message.
 - `stop_reason` and `thinking_ms` are stored on `usage`. A `max_tokens` stop shows "Claude hit the maximum length for this message." and a Continue button.
 - Changing effort or model mid-conversation costs one cache miss on the next turn. That is expected.
@@ -97,7 +97,7 @@ Files: `web_tools` / `history_has_web_blocks` / `_attach_web_tools` in `backend/
 
 Files: `frontend/src/models.ts`, `frontend/src/ModelMenu.tsx`, `frontend/src/Composer.tsx`, `frontend/src/ModelMenu.test.tsx`, `frontend/src/theme.ts`, the header in `frontend/src/App.tsx`.
 
-- The model menu sits next to Send. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, and Haiku 4.5. Effort runs from Low to Max on the three 5.x models, with defaults of high, medium, and high. Haiku has no effort setting and has an Extended thinking toggle with a budget of 16000. Model, effort per model, and extended thinking are stored in `localStorage` (`tangents-model`, `tangents-effort`, `tangents-extended-thinking`). The menu has its own outside-click handling, separate from `menuRef`.
+- The model menu sits next to Send. Choices: Sonnet 5.5, Opus 5.5, Fable 5.1, and Haiku 5.5. Effort runs from Low to Max on all four, with defaults of high, medium, high, and medium. There is no Extended thinking toggle on the menu. `tangents-extended-thinking` can remain in storage; nothing in the menu reads it for these four models. Model and effort per model are stored in `localStorage` (`tangents-model`, `tangents-effort`). The menu has its own outside-click handling, separate from `menuRef`.
 - Dark mode follows the system until toggled; the choice is stored in `localStorage`.
 
 ## Node delete
@@ -159,7 +159,7 @@ Files: `Markdown` in `frontend/src/Message.tsx`, `frontend/src/index.css`, `fron
 Files: `backend/app/learning_map.py`, `suggest_sketch` / `attach_learning_map` / `stream_chat` in `backend/app/llm.py`, `_chat_events` in `backend/app/main.py`, the `threads.sketch` column and `set_thread_sketch` in `backend/app/db.py`, `Thread.sketch` in `frontend/src/types.ts`, the hover in `frontend/src/TreeView.tsx`. `frontend/src/TreeView.test.tsx` covers the hover. `backend/tests/test_learning_map.py` and the sketch / attach cases in `backend/tests/test_llm.py` and `backend/tests/test_api.py` cover the rest.
 
 - Message context is still only the `parent_id` walk. The map is not stored on any message.
-- After every successful text reply, Haiku rewrites that node's sketch. The title still changes only on the first reply.
+- After every successful text reply, Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model) rewrites that node's sketch. The title still changes only on the first reply.
 - A failed, empty, or cut-off sketch call keeps the turn and the previous sketch. A reply with no text does not call the sketch model. A failed turn does not write a sketch.
 - The map is prepended to the API copy of the new user message. It is not a system prompt. The last-block cache breakpoint stays on that message.
 - The model map has no `At:` fork quote. `Branched from:` names the parent. The tree hover still shows the fork snippet.
