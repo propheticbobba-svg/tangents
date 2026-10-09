@@ -31,8 +31,8 @@ Copy `backend/.env.example` to `backend/.env`. The file is gitignored.
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | to call Claude | Read on the server only. Never sent to the browser. The server still starts without it and fails the call with a clear error. |
-| `ANTHROPIC_MODEL` | no | Optional fallback. The model menu next to Send chooses the model for each turn and is remembered in the browser. Current choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 4.5. |
-| `MAX_TOKENS` | no | Optional ceiling on reply length. Unset means each model's maximum: 128000 for Sonnet 5.5, Opus 5.5, and Fable 5.1, and 64000 for Haiku 4.5. A set value is used only when it is lower than that maximum. Values under 1 refuse to start. |
+| `ANTHROPIC_MODEL` | no | Optional fallback. The model menu next to Send chooses the model for each turn and is remembered in the browser. Current choices: Sonnet 5.5, Opus 5.5, Fable 5.1, Haiku 5.5. `claude-haiku-4-5` remains a server fallback only and is not in the menu. |
+| `MAX_TOKENS` | no | Optional ceiling on reply length. Unset means each model's maximum: 128000 for the four menu models. `claude-haiku-4-5` as a server fallback still uses 64000. A set value is used only when it is lower than that maximum. Values under 1 refuse to start. |
 | `CACHE_TTL` | no | `5m` (default) or `1h`. Anything else refuses to start. |
 | `COMPACT_TRIGGER_TOKENS` | no | Input-token trigger for server-side compaction. Defaults to 150000. Values under 50000 refuse to start. |
 | `WEB_SEARCH_MAX_USES` | no | Cap on web searches per request. Defaults to 5. Values under 1 refuse to start. |
@@ -70,7 +70,7 @@ A side node's first message has `parent_id` set to the assistant message it was 
 
 ## Learning map
 
-Each node keeps a short sketch of the kind of work in it. After a successful reply that contains text, Claude Haiku 4.5 rewrites that node's sketch from the latest user message and reply. A failed, empty, or cut-off sketch call leaves the previous sketch and still saves the turn.
+Each node keeps a short sketch of the kind of work in it. After a successful reply that contains text, Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model) rewrites that node's sketch from the latest user message and reply. A failed, empty, or cut-off sketch call leaves the previous sketch and still saves the turn.
 
 The next turn in that conversation prepends a map of every node (title, sketch, and `Branched from:`) to the API copy of the new user message. Stored messages stay the parent-id path only. The map header tells the model to answer the last text block of that turn, which is the user's new message. Fork quotes stay on the tree hover. They are not copied into the map.
 
@@ -111,7 +111,7 @@ Within a thread, messages form a line. A new message's `parent_id` is the thread
 
 The pinned goal defaults to the text of the center node's first user message, and only while `goal` is still NULL. Editing it does not change the transcript. Compaction summaries are instructed to restate the current goal.
 
-After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5 (`claude-haiku-4-5`), taken from the first 400 characters of that node's first user message and the first 400 characters of the reply. The name has to agree with the reply, so it cannot state a fact the reply just contradicted. If that call fails or comes back empty, the title is the first 40 characters of the user message. Later messages do not rename the node.
+After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model), taken from the first 400 characters of that node's first user message and the first 400 characters of the reply. The name has to agree with the reply, so it cannot state a fact the reply just contradicted. If that call fails or comes back empty, the title is the first 40 characters of the user message. Later messages do not rename the node.
 
 Stored messages are not edited or deleted, except the user message of a turn that fails before an assistant reply is saved.
 
@@ -164,7 +164,7 @@ Long center-node (and side-node) turns use the API's server-side threshold compa
 
 The API ignores content before a compaction block. This app still sends the full `get_context` path and never deletes or edits stored messages. The assistant message that contains the compaction block is the checkpoint; the tree stays intact. In the chat, that message shows a **Compacted here** divider above its text. The divider expands to the summary. Older messages stay visible above it. There is no manual compact button.
 
-On startup, if `ANTHROPIC_MODEL` is not on the supported list, the server logs a warning and skips `context_management` (sending it would 400). Supported ids, including a trailing `-YYYYMMDD` snapshot: `claude-fable-5-1`, `claude-mythos-5-1`, `claude-fable-5`, `claude-mythos-5`, `claude-mythos-preview`, `claude-opus-5-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-sonnet-4-6`.
+On startup, if `ANTHROPIC_MODEL` is not on the supported list, the server logs a warning and skips `context_management` (sending it would 400). Supported ids, including a trailing `-YYYYMMDD` snapshot: `claude-fable-5-1`, `claude-mythos-5-1`, `claude-fable-5`, `claude-mythos-5`, `claude-mythos-preview`, `claude-opus-5-5`, `claude-haiku-5-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-sonnet-4-6`.
 
 A compaction block streams as one `compaction_delta` with the full summary, not token by token. Top-level `input_tokens` / `output_tokens` exclude the compaction iteration, so the footer adds `compaction in / out` from `usage.iterations` when a compaction entry is present.
 
@@ -203,6 +203,6 @@ The header **Charts** switch sits next to **Docs**. It is off by default and rem
 - Side nodes show a breadcrumb (`Center › … › this node`). Click a title there, or a card in the tree, to switch nodes.
 - Every assistant message has a **Fork** button. Selecting text in an assistant message also offers **Fork from this** (opens the side node with the selection quoted in the composer) and **Explain this** (opens it and sends the quote plus "Explain this." immediately).
 - Replies stream. Markdown and code blocks are rendered. While Claude thinks, the reply shows **Thinking…** with a running timer. Afterwards, **Thought for Ns** expands to a summary of that reasoning. Dark mode follows the system until you toggle it; the choice is stored in `localStorage`.
-- The model menu sits next to **Send**. It chooses the model, an effort from Low to Max (each model marks its recommended level **Default**), and, for Haiku 4.5, an **Extended thinking** toggle. Sonnet 5.5, Opus 5.5, and Fable 5.1 always think. The choice is remembered in the browser.
+- The model menu sits next to **Send**. It chooses the model and an effort from Low to Max (each model marks its recommended level **Default**). Sonnet 5.5, Opus 5.5, Fable 5.1, and Haiku 5.5 always think. There is no Extended thinking toggle. The choice is remembered in the browser.
 - If a reply hits the length limit, the message says so and offers **Continue**, which asks Claude to finish.
 - The header has **Web**, **Docs**, and **Charts** switches. All off by default. See [Web search](#web-search), [Documents](#documents), and [Charts](#charts).

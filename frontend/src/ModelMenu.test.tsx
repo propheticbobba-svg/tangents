@@ -43,7 +43,7 @@ describe("ModelMenu", () => {
     expect(screen.getByRole("menuitemradio", { name: "Sonnet 5.5" })).toBeTruthy();
     expect(screen.getByRole("menuitemradio", { name: "Opus 5.5" })).toBeTruthy();
     expect(screen.getByRole("menuitemradio", { name: "Fable 5.1" })).toBeTruthy();
-    expect(screen.getByRole("menuitemradio", { name: "Haiku 4.5" })).toBeTruthy();
+    expect(screen.getByRole("menuitemradio", { name: "Haiku 5.5" })).toBeTruthy();
     expect(screen.getByRole("menuitemradio", { name: /^High/ }).textContent).toContain("Default");
     expect(screen.getByText("Thinking is always on for this model.")).toBeTruthy();
   });
@@ -55,13 +55,13 @@ describe("ModelMenu", () => {
     expect(props.onEffort).toHaveBeenCalledWith("max");
   });
 
-  it("hides effort for Haiku and toggles extended thinking", () => {
-    const props = renderMenu({ model: "claude-haiku-4-5", effort: null });
-    fireEvent.click(screen.getByRole("button", { name: /Haiku 4.5/ }));
-    expect(screen.queryByText("Effort")).toBeNull();
-    expect(screen.queryByRole("menuitemradio", { name: /High/ })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Extended thinking" }));
-    expect(props.onExtended).toHaveBeenCalledWith(true);
+  it("shows effort and always-on thinking for Haiku", () => {
+    renderMenu({ model: "claude-haiku-5-5", effort: "medium" });
+    fireEvent.click(screen.getByRole("button", { name: /Haiku 5.5 · Medium/ }));
+    expect(screen.getByText("Effort")).toBeTruthy();
+    expect(screen.getByRole("menuitemradio", { name: /^Medium/ }).textContent).toContain("Default");
+    expect(screen.getByText("Thinking is always on for this model.")).toBeTruthy();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Extended thinking" })).toBeNull();
   });
 
   it("closes when Escape is pressed", () => {

@@ -21,6 +21,7 @@ COMPACTION_MODELS = (
     "claude-mythos-5",
     "claude-mythos-preview",
     "claude-opus-5-5",
+    "claude-haiku-5-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
@@ -163,6 +164,7 @@ class ModelCaps:
 MODEL_CAPS = {
     "claude-sonnet-5-5": ModelCaps(EFFORT_LEVELS, "high", "adaptive", 128_000),
     "claude-opus-5-5": ModelCaps(EFFORT_LEVELS, "medium", "adaptive", 128_000),
+    "claude-haiku-5-5": ModelCaps(EFFORT_LEVELS, "medium", "adaptive", 128_000),
     "claude-fable-5-1": ModelCaps(EFFORT_LEVELS, "high", "adaptive", 128_000),
     "claude-haiku-4-5": ModelCaps((), None, "extended", 64_000),
 }

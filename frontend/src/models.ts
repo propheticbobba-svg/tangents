@@ -15,7 +15,7 @@ export const MODELS = [
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5", efforts: ALL_EFFORTS, defaultEffort: "high", thinking: "adaptive" },
   { id: "claude-opus-5-5", label: "Opus 5.5", efforts: ALL_EFFORTS, defaultEffort: "medium", thinking: "adaptive" },
   { id: "claude-fable-5-1", label: "Fable 5.1", efforts: ALL_EFFORTS, defaultEffort: "high", thinking: "adaptive" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", efforts: [], defaultEffort: null, thinking: "extended" },
+  { id: "claude-haiku-5-5", label: "Haiku 5.5", efforts: ALL_EFFORTS, defaultEffort: "medium", thinking: "adaptive" },
 ] as const satisfies readonly {
   id: string;
   label: string;
@@ -39,6 +39,10 @@ export function modelInfo(id: ModelId) {
 
 export function loadModel(): ModelId {
   const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === "claude-haiku-4-5") {
+    saveModel("claude-haiku-5-5");
+    return "claude-haiku-5-5";
+  }
   if (stored && MODELS.some((model) => model.id === stored)) return stored as ModelId;
   return DEFAULT_MODEL;
 }

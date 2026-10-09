@@ -133,6 +133,8 @@ def test_compaction_instructions_restate_the_goal():
 def test_model_support_list_includes_current_5_5_models():
     assert model_supports_compaction("claude-sonnet-5-5")
     assert model_supports_compaction("claude-opus-5-5")
+    assert model_supports_compaction("claude-haiku-5-5")
+    assert model_supports_compaction("claude-haiku-5-5-20261008")
     assert model_supports_compaction("claude-sonnet-5-5-20260928")
     assert model_supports_compaction("claude-sonnet-5")
     assert model_supports_compaction("claude-opus-5")
@@ -178,6 +180,8 @@ def test_suggest_title_sends_a_short_haiku_prompt(monkeypatch):
     assert "stop_sequences" not in messages.kwargs
     assert "system" not in messages.kwargs
     assert "tools" not in messages.kwargs
+    assert "thinking" not in messages.kwargs
+    assert "output_config" not in messages.kwargs
     assert prompt == f"{TITLE_INSTRUCTION}\n\n{excerpt}"
     assert len(excerpt) <= TITLE_INPUT_CHARS
     assert "detail detail" in excerpt
@@ -264,6 +268,8 @@ def test_suggest_sketch_sends_a_short_haiku_prompt(monkeypatch):
     assert "stop_sequences" not in messages.kwargs
     assert "system" not in messages.kwargs
     assert "tools" not in messages.kwargs
+    assert "thinking" not in messages.kwargs
+    assert "output_config" not in messages.kwargs
     assert prompt.startswith(f"{SKETCH_INSTRUCTION}\n\n")
     assert "Node title: Center" in prompt
     assert "Previous sketch:\nEarlier work on limits." in prompt
@@ -527,6 +533,12 @@ def test_thinking_params_per_model():
     assert thinking_params("claude-opus-5-5", None, False)["output_config"] == {"effort": "medium"}
     assert thinking_params("claude-fable-5-1", "max", False)["output_config"] == {"effort": "max"}
     assert thinking_params("claude-sonnet-5-5", "turbo", False)["output_config"] == {"effort": "high"}
+    assert thinking_params("claude-haiku-5-5", None, False) == {
+        "thinking": {"type": "adaptive", "display": "summarized"},
+        "output_config": {"effort": "medium"},
+    }
+    assert thinking_params("claude-haiku-5-5", "max", True)["output_config"] == {"effort": "max"}
+    assert "budget_tokens" not in thinking_params("claude-haiku-5-5", "max", True).get("thinking", {})
     assert thinking_params("claude-haiku-4-5", None, False) == {}
     assert thinking_params("claude-haiku-4-5", None, True) == {
         "thinking": {"type": "enabled", "budget_tokens": 16000},
@@ -538,6 +550,7 @@ def test_resolve_max_tokens(monkeypatch):
     monkeypatch.delenv("MAX_TOKENS", raising=False)
     monkeypatch.setattr("app.config._settings", None)
     assert resolve_max_tokens("claude-sonnet-5-5") == 128_000
+    assert resolve_max_tokens("claude-haiku-5-5") == 128_000
     assert resolve_max_tokens("claude-haiku-4-5") == 64_000
 
     monkeypatch.setenv("MAX_TOKENS", "8000")
