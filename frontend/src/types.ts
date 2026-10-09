@@ -58,6 +58,7 @@ export type Thread = {
   parent_thread_id: string | null;
   fork_message_id: string | null;
   title: string;
+  sketch?: string | null;
   created_at: string;
   fork_snippet?: string | null;
   fork_position?: number | null;

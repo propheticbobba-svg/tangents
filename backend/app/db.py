@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS threads (
     parent_thread_id TEXT REFERENCES threads(id),
     fork_message_id TEXT REFERENCES messages(id),
     title TEXT NOT NULL,
+    sketch TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -86,12 +87,26 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _threads_has_sketch(conn: sqlite3.Connection) -> bool:
+    columns = conn.execute("PRAGMA table_info(threads)").fetchall()
+    return any(row["name"] == "sketch" for row in columns)
+
+
+def migrate_threads_sketch(conn: sqlite3.Connection) -> None:
+    """Add threads.sketch on databases created before the column existed."""
+    if _threads_has_sketch(conn):
+        return
+    conn.execute("ALTER TABLE threads ADD COLUMN sketch TEXT")
+    conn.commit()
+
+
 def init_db() -> None:
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        migrate_threads_sketch(conn)
         conn.commit()
     finally:
         conn.close()
@@ -125,6 +140,7 @@ def _thread_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "parent_thread_id": row["parent_thread_id"],
         "fork_message_id": row["fork_message_id"],
         "title": row["title"],
+        "sketch": row["sketch"],
         "created_at": row["created_at"],
     }
 
@@ -442,6 +458,11 @@ def delete_message(conn: sqlite3.Connection, message_id: str) -> None:
 
 def rename_thread(conn: sqlite3.Connection, thread_id: str, title: str) -> None:
     conn.execute("UPDATE threads SET title = ? WHERE id = ?", (title, thread_id))
+    conn.commit()
+
+
+def set_thread_sketch(conn: sqlite3.Connection, thread_id: str, sketch: str) -> None:
+    conn.execute("UPDATE threads SET sketch = ? WHERE id = ?", (sketch, thread_id))
     conn.commit()
 
 

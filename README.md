@@ -68,6 +68,12 @@ Context for a message is the walk of `parent_id` back to the root, reversed. Not
 
 A side node's first message has `parent_id` set to the assistant message it was forked from. That is the whole snapshot: later messages on the parent are not on the path.
 
+## Learning map
+
+Each node keeps a short sketch of the kind of work in it. After a successful reply that contains text, Claude Haiku 4.5 rewrites that node's sketch from the latest user message and reply. A failed, empty, or cut-off sketch call leaves the previous sketch and still saves the turn.
+
+The next turn in that conversation prepends a map of every node (title, sketch, and `Branched from:`) to the API copy of the new user message. Stored messages stay the parent-id path only. The map header tells the model to answer the last text block of that turn, which is the user's new message. Fork quotes stay on the tree hover. They are not copied into the map.
+
 ## Schema
 
 SQLite, one file, via `sqlite3`. Message `content` is a JSON array of raw Anthropic content blocks, stored as returned and sent back unchanged. User messages are stored as `[{"type": "text", "text": "..."}]`.
@@ -85,6 +91,7 @@ threads (
   parent_thread_id TEXT REFERENCES threads(id),  -- NULL for the center node
   fork_message_id TEXT REFERENCES messages(id),  -- NULL for the center node
   title TEXT,
+  sketch TEXT,          -- kind of work in this node; NULL until the first successful sketch
   created_at TEXT
 )
 

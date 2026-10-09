@@ -154,6 +154,19 @@ Files: `Markdown` in `frontend/src/Message.tsx`, `frontend/src/index.css`, `fron
 - No new dependency, no system prompt, and stored message text is not rewritten.
 - Introduced on `style-markdown-tables`.
 
+## Learning map
+
+Files: `backend/app/learning_map.py`, `suggest_sketch` / `attach_learning_map` / `stream_chat` in `backend/app/llm.py`, `_chat_events` in `backend/app/main.py`, the `threads.sketch` column and `set_thread_sketch` in `backend/app/db.py`, `Thread.sketch` in `frontend/src/types.ts`, the hover in `frontend/src/TreeView.tsx`. `frontend/src/TreeView.test.tsx` covers the hover. `backend/tests/test_learning_map.py` and the sketch / attach cases in `backend/tests/test_llm.py` and `backend/tests/test_api.py` cover the rest.
+
+- Message context is still only the `parent_id` walk. The map is not stored on any message.
+- After every successful text reply, Haiku rewrites that node's sketch. The title still changes only on the first reply.
+- A failed, empty, or cut-off sketch call keeps the turn and the previous sketch. A reply with no text does not call the sketch model. A failed turn does not write a sketch.
+- The map is prepended to the API copy of the new user message. It is not a system prompt. The last-block cache breakpoint stays on that message.
+- The model map has no `At:` fork quote. `Branched from:` names the parent. The tree hover still shows the fork snippet.
+- The map header tells the model that this block is not the user's message, and that the last text block of the same turn is the message to answer. A sketch that disagrees with the path loses. The pinned goal is background.
+- If the map does not fit in 8000 characters, drop the deepest unprotected side nodes first (later siblings first). Always keep the header, the current node, its ancestors, the `(map truncated)` line, and the closing line that says the last text block is the user's new message.
+- Tree card hover still shows the fork snippet. When a sketch exists, it is appended after a blank line. Card width still uses only the title and the Center / Side node label.
+
 ## Removed
 
 - Merge back is gone. There is no summary call, no merge route, and no control that copies a side node onto its parent. A side node's messages stay on that node. A stored row with `is_note` still renders as a note; nothing creates new notes.

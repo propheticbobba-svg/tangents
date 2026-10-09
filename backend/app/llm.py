@@ -78,6 +78,16 @@ TITLE_INSTRUCTION = (
     "Name the topic. If a reply is included, the title must agree with that reply "
     "and must not state a fact the reply contradicts."
 )
+SKETCH_MAX_CHARS = 280
+SKETCH_MAX_TOKENS = 120
+SKETCH_INSTRUCTION = (
+    "Rewrite the node's sketch in one or two sentences, at most 40 words.\n"
+    "Describe the kind of work this node contains: the topic and what the user is doing there.\n"
+    "Keep topics from the previous sketch when this turn does not replace them.\n"
+    "Do not state answers, results, numbers, formulas, quotes, or conclusions.\n"
+    "Do not copy sentences from the user or the reply.\n"
+    "Reply with only the sketch. One paragraph. No title, no quotes, no markdown."
+)
 _TITLE_QUOTES = "\"'`“”‘’"
 
 logger = logging.getLogger("tangents")
@@ -146,6 +156,14 @@ def to_api_messages(path: list[dict], ttl: str) -> list[dict]:
         else:
             merged.append({"role": message["role"], "content": list(message["content"])})
     return merged
+
+
+def attach_learning_map(messages: list[dict], learning_map: str | None) -> None:
+    """Prepend the conversation map to the API copy of the new user message."""
+    text = (learning_map or "").strip()
+    if not text or not messages:
+        return
+    messages[-1]["content"].insert(0, {"type": "text", "text": text})
 
 
 def compaction_instructions(goal: str | None) -> str:
@@ -407,6 +425,7 @@ def stream_chat(
     effort: str | None = None,
     extended_thinking: bool = False,
     charts: bool = False,
+    learning_map: str | None = None,
 ) -> Iterator[dict]:
     """Stream one assistant turn.
 
@@ -420,6 +439,7 @@ def stream_chat(
     settings = get_settings()
     chosen = resolve_model(model)
     messages = to_api_messages(path, settings.cache_ttl)
+    attach_learning_map(messages, learning_map)
     compact = model_supports_compaction(chosen)
     kwargs: dict[str, Any] = {
         "model": chosen,
@@ -544,6 +564,76 @@ def _fetch_title(user_text: str, reply_text: str = "") -> str:
 
     if getattr(response, "stop_reason", None) == "max_tokens":
         raise LLMError("title was cut off")
+
+    parts = []
+    for block in response.content:
+        dumped = _dump_block(block)
+        if dumped.get("type") == "text" and dumped.get("text"):
+            parts.append(dumped["text"])
+    return "\n".join(parts).strip()
+
+
+def sanitize_sketch(raw: str) -> str | None:
+    """One paragraph, quotes removed, hard-capped. Empty input is discarded."""
+    collapsed = " ".join(raw.split()).strip()
+    if len(collapsed) >= 2 and collapsed[0] in _TITLE_QUOTES and collapsed[-1] in _TITLE_QUOTES:
+        collapsed = collapsed[1:-1].strip()
+    collapsed = collapsed.lstrip("#").strip()
+    if len(collapsed) > SKETCH_MAX_CHARS:
+        collapsed = collapsed[:SKETCH_MAX_CHARS].rstrip()
+    return collapsed or None
+
+
+def suggest_sketch(
+    title: str,
+    previous: str | None,
+    user_text: str,
+    reply_text: str,
+) -> str | None:
+    """Rewrite a node's sketch from the latest turn. Failures leave the old sketch."""
+    reply_text = strip_chart_blocks(reply_text)
+    if not reply_text.strip():
+        return None
+    try:
+        raw = _fetch_sketch(title, previous, user_text, reply_text)
+    except Exception as exc:
+        logger.warning("sketch call failed: %s", exc)
+        return None
+    sketch = sanitize_sketch(raw)
+    if not sketch:
+        logger.warning("sketch call returned nothing usable")
+        return None
+    return sketch
+
+
+def _fetch_sketch(
+    title: str,
+    previous: str | None,
+    user_text: str,
+    reply_text: str,
+) -> str:
+    require_config()
+    prior = previous.strip() if previous and previous.strip() else "(none)"
+    prompt = (
+        f"{SKETCH_INSTRUCTION}\n\n"
+        f"Node title: {title}\n\n"
+        f"Previous sketch:\n{prior}\n\n"
+        f"Latest user message:\n{title_excerpt(user_text)}\n\n"
+        f"Latest reply:\n{title_excerpt(reply_text)}"
+    )
+    try:
+        response = _client().messages.create(
+            model=TITLE_MODEL,
+            max_tokens=SKETCH_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except LLMError:
+        raise
+    except Exception as exc:
+        raise LLMError(str(exc)) from exc
+
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise LLMError("sketch was cut off")
 
     parts = []
     for block in response.content:
