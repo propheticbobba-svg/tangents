@@ -11,6 +11,8 @@ from app.llm import (
     TITLE_MAX_CHARS,
     TITLE_MAX_TOKENS,
     TITLE_MODEL,
+    SKETCH_INSTRUCTION,
+    SKETCH_MAX_TOKENS,
     WEB_BLOCK_TYPES,
     WEB_FETCH_TOOL_TYPE,
     WEB_SEARCH_TOOL_TYPE,
@@ -19,11 +21,13 @@ from app.llm import (
     _attach_web_tools,
     _result_sources,
     _web_activity,
+    attach_learning_map,
     compaction_instructions,
     history_has_compaction,
     history_has_web_blocks,
     stream_chat,
     strip_chart_blocks,
+    suggest_sketch,
     suggest_title,
     thinking_params,
     to_api_messages,
@@ -238,6 +242,86 @@ def test_suggest_title_falls_back_when_the_call_fails_or_is_empty(monkeypatch):
     assert suggest_title(opening) == short_title(opening)
 
 
+def test_suggest_sketch_sends_a_short_haiku_prompt(monkeypatch):
+    messages = _Messages(text='"Working through the main argument."')
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    monkeypatch.setattr("app.llm._client", lambda: _Client(messages))
+    user = "Please  \n walk me through the proof. " + ("detail " * 80)
+    reply = "Here is the first step. " + ("more " * 80)
+    chart_reply = (
+        reply
+        + '\n```plotly\n{"data":[{"y":[1]}],"layout":{}}\n```\n'
+        + "That is the trend."
+    )
+    assert (
+        suggest_sketch("Center", "Earlier work on limits.", user, chart_reply)
+        == "Working through the main argument."
+    )
+    prompt = messages.kwargs["messages"][0]["content"]
+    user_excerpt = " ".join(user.split())[:TITLE_INPUT_CHARS].rstrip()
+    assert messages.kwargs["model"] == TITLE_MODEL
+    assert messages.kwargs["max_tokens"] == SKETCH_MAX_TOKENS
+    assert "stop_sequences" not in messages.kwargs
+    assert "system" not in messages.kwargs
+    assert "tools" not in messages.kwargs
+    assert prompt.startswith(f"{SKETCH_INSTRUCTION}\n\n")
+    assert "Node title: Center" in prompt
+    assert "Previous sketch:\nEarlier work on limits." in prompt
+    assert f"Latest user message:\n{user_excerpt}" in prompt
+    assert "```plotly" not in prompt
+    assert '"y":[1]' not in prompt
+    assert len(user_excerpt) <= TITLE_INPUT_CHARS
+
+
+def test_suggest_sketch_returns_none_on_failure_empty_or_cutoff(monkeypatch):
+    monkeypatch.setattr("app.llm.require_config", lambda: None)
+    unused = _Messages(text="should not be used")
+    monkeypatch.setattr("app.llm._client", lambda: _Client(unused))
+    assert suggest_sketch("Center", None, "hello", "") is None
+    assert unused.kwargs is None
+    assert suggest_sketch("Center", None, "hello", "```plotly\n{}\n```") is None
+    assert unused.kwargs is None
+
+    failed = _Messages(error=RuntimeError("down"))
+    monkeypatch.setattr("app.llm._client", lambda: _Client(failed))
+    assert suggest_sketch("Center", None, "hello", "ok") is None
+
+    empty = _Messages(text="  \n  ")
+    monkeypatch.setattr("app.llm._client", lambda: _Client(empty))
+    assert suggest_sketch("Center", None, "hello", "ok") is None
+
+    class _Cut:
+        stop_reason = "max_tokens"
+        content = [_Block("Working through the main")]
+
+    class _CuttingMessages(_Messages):
+        def create(self, **kwargs):
+            self.kwargs = kwargs
+            return _Cut()
+
+    monkeypatch.setattr("app.llm._client", lambda: _Client(_CuttingMessages()))
+    assert suggest_sketch("Center", None, "hello", "ok") is None
+
+
+def test_attach_learning_map_prepends_without_cache_or_mutation():
+    original = message("user", "Hello")
+    snapshot = copy.deepcopy(original)
+    api = to_api_messages([original], "5m")
+    attach_learning_map(api, "MAP")
+    assert api[-1]["content"][0] == {"type": "text", "text": "MAP"}
+    assert "cache_control" not in api[-1]["content"][0]
+    assert api[-1]["content"][1]["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+    assert original == snapshot
+
+    blank = to_api_messages([message("user", "Hello")], "5m")
+    before = copy.deepcopy(blank)
+    attach_learning_map(blank, "   ")
+    assert blank == before
+    attach_learning_map(blank, None)
+    assert blank == before
+    attach_learning_map([], "MAP")
+
+
 def test_cache_ttl_must_be_5m_or_1h(monkeypatch):
     monkeypatch.setenv("CACHE_TTL", "10m")
     with pytest.raises(RuntimeError, match="CACHE_TTL"):
@@ -371,6 +455,15 @@ def test_web_turn_tells_the_model_to_look_up_current_facts(monkeypatch):
         messages.kwargs["system"]
         == f"{WEB_TURN_INSTRUCTION}\n\n{DOCS_INSTRUCTION}\n\n{CHARTS_INSTRUCTION}"
     )
+
+    list(stream_chat(path, None, "claude-haiku-4-5", learning_map="MAP"))
+    assert messages.kwargs["messages"][-1]["content"][0] == {"type": "text", "text": "MAP"}
+    assert "cache_control" not in messages.kwargs["messages"][-1]["content"][0]
+    assert "system" not in messages.kwargs
+
+    list(stream_chat(path, None, "claude-haiku-4-5"))
+    assert messages.kwargs["messages"][-1]["content"][0]["text"] == path[0]["content"][0]["text"]
+    assert "system" not in messages.kwargs
 
 
 def test_strip_chart_blocks_removes_closed_and_unclosed_blocks():

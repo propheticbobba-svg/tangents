@@ -37,6 +37,7 @@ from app.db import (
     next_parent_id,
     note_user_message,
     rename_thread,
+    set_thread_sketch,
     short_title,
     text_of,
     thread_view,
@@ -44,7 +45,8 @@ from app.db import (
     undo_user_message,
     update_goal,
 )
-from app.llm import LLMError, stream_chat, suggest_title
+from app.learning_map import render_learning_map
+from app.llm import LLMError, stream_chat, suggest_sketch, suggest_title
 from app.rag import (
     UnsupportedDocument,
     delete_document,
@@ -378,6 +380,16 @@ def _chat_events(
             yield _sse("error", {"error": "Could not build context for this message"})
             return
 
+        outline = tree(conn, thread["conversation_id"])
+        learning_map = None
+        if outline is not None:
+            learning_map = render_learning_map(
+                outline["threads"],
+                thread_id,
+                outline["goal"],
+                {message["id"] for message in path},
+            )
+
         try:
             done: dict | None = None
             for event in stream_chat(
@@ -389,6 +401,7 @@ def _chat_events(
                 effort=effort,
                 extended_thinking=extended_thinking,
                 charts=charts,
+                learning_map=learning_map,
             ):
                 if event["type"] == "delta":
                     yield _sse("delta", {"text": event["text"]})
@@ -416,6 +429,16 @@ def _chat_events(
             reply_text = text_of(done["content"])
             if reply_text:
                 _name_first_turn(conn, thread_id, content, undo, reply_text)
+                try:
+                    named = get_thread(conn, thread_id)
+                    if named is not None:
+                        sketch = suggest_sketch(
+                            named["title"], named["sketch"], content, reply_text
+                        )
+                        if sketch:
+                            set_thread_sketch(conn, thread_id, sketch)
+                except Exception:
+                    logger.exception("could not store the node sketch")
             elif undo.get("first_turn"):
                 try:
                     rename_thread(conn, thread_id, short_title(content))

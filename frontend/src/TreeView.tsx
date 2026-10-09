@@ -47,6 +47,7 @@ type ThreadCard = {
   title: string;
   kind: string;
   forkSnippet: string | null;
+  sketch: string | null;
   active: boolean;
   hasChildren: boolean;
   isCenter: boolean;
@@ -110,6 +111,7 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
         title: thread.title,
         kind: thread.parent_thread_id ? "Side node" : "Center",
         forkSnippet: thread.fork_snippet ?? null,
+        sketch: thread.sketch ?? null,
         active: thread.id === activeThreadId,
         hasChildren: kids.length > 0,
         isCenter: thread.parent_thread_id === null,
@@ -134,9 +136,10 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
 }
 
 function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
+  const hover = [data.forkSnippet, data.sketch].filter(Boolean).join("\n\n");
   return (
     <div
-      title={data.forkSnippet ?? undefined}
+      title={hover || undefined}
       className={`group relative w-full rounded-lg border px-3 py-2 shadow-sm ${
         data.active ? "border-accent bg-user" : "border-line bg-panel"
       }`}

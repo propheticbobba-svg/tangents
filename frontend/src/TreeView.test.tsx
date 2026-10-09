@@ -93,4 +93,25 @@ describe("TreeView delete", () => {
 
     expect(container.querySelector(".pointer-events-none")).toBeTruthy();
   });
+
+  it("puts the sketch on the card hover after the fork snippet", () => {
+    renderTree({
+      threads: [
+        thread({ id: "center", title: "Center" }),
+        thread({
+          id: "side",
+          parent_thread_id: "center",
+          fork_message_id: "msg-1",
+          title: "Rust lifetimes",
+          fork_snippet: "forked here",
+          sketch: "Looking at proofs.",
+          created_at: "2026-01-01T00:01:00Z",
+        }),
+      ],
+    });
+
+    const card = document.querySelector('[title]');
+    expect(card?.getAttribute("title")).toContain("forked here");
+    expect(card?.getAttribute("title")).toContain("Looking at proofs.");
+  });
 });

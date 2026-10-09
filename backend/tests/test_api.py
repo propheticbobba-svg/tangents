@@ -279,7 +279,7 @@ def test_ui_model_is_the_one_sent_to_the_api(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         seen["model"] = model
         yield {
             "type": "done",
@@ -302,7 +302,7 @@ def test_stream_saves_the_turn_the_goal_and_usage(client, monkeypatch):
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         seen["ids"] = [message["id"] for message in path]
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -347,7 +347,7 @@ def test_fork_is_a_snapshot_point_and_siblings_stay_separate(client, monkeypatch
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         text = "answer " + path[-1]["content"][0]["text"]
         yield {"type": "delta", "text": text}
         yield {
@@ -497,7 +497,7 @@ def test_web_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         seen["web"] = web
         yield {
             "type": "done",
@@ -522,7 +522,7 @@ def test_charts_flag_defaults_to_false_and_reaches_stream_chat(client, monkeypat
     monkeypatch.setattr("app.main.get_context", walk)
     seen = {}
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         seen["charts"] = charts
         yield {
             "type": "done",
@@ -608,7 +608,7 @@ def test_a_web_error_block_does_not_roll_back_the_turn(client, monkeypatch):
     monkeypatch.setattr("app.main.get_context", walk)
     monkeypatch.setattr("app.main.suggest_title", haiku_title)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         yield {
             "type": "done",
             "content": [
@@ -687,7 +687,7 @@ def test_upload_rejects_unknown_conversation_bad_type_and_oversize(client, small
 
 
 def _reply_stream(seen):
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         seen["docs"] = docs
         seen["goal"] = goal
         seen["blocks"] = path[-1]["content"]
@@ -754,7 +754,7 @@ def test_failed_docs_turn_drops_the_passages(client, monkeypatch):
     use_fake_embedder(monkeypatch)
     monkeypatch.setattr("app.main.get_context", walk)
 
-    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False):
+    def fake_stream(path, goal, model=None, web=False, docs=False, effort=None, extended_thinking=False, charts=False, learning_map=None):
         raise LLMError("nope")
 
     monkeypatch.setattr("app.main.stream_chat", fake_stream)
@@ -796,3 +796,113 @@ def test_unknown_effort_is_rejected(client):
         json={"content": "Hello", "effort": "turbo"},
     )
     assert response.status_code == 422
+
+
+def test_learning_map_lists_sibling_sketches_without_their_messages(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_context", walk)
+
+    def titles(text: str, reply_text: str = "") -> str:
+        if text == "Main topic":
+            return "Center topic"
+        if text == "Look at proofs":
+            return "Proofs"
+        if text == "Look at examples":
+            return "Examples"
+        return f"Named: {text}"
+
+    def sketches(title, previous, user_text, reply_text):
+        return {
+            "Main topic": "Working through the main argument.",
+            "Look at proofs": "Looking at proof techniques.",
+            "Look at examples": "Trying numerical examples.",
+        }.get(user_text)
+
+    monkeypatch.setattr("app.main.suggest_title", titles)
+    monkeypatch.setattr("app.main.suggest_sketch", sketches)
+    calls = []
+
+    def fake_stream(
+        path,
+        goal,
+        model=None,
+        web=False,
+        docs=False,
+        effort=None,
+        extended_thinking=False,
+        charts=False,
+        learning_map=None,
+    ):
+        user = path[-1]["content"][-1]["text"]
+        calls.append(
+            {
+                "user": user,
+                "learning_map": learning_map,
+                "path_ids": [message["id"] for message in path],
+                "path": path,
+            }
+        )
+        text = "The proof starts here." if user == "Main topic" else "ok"
+        yield {
+            "type": "done",
+            "content": [{"type": "text", "text": text}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    monkeypatch.setattr("app.main.stream_chat", fake_stream)
+    conversation_id, center_id = create_conversation(client)
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "Main topic"})
+    center = client.get(f"/api/threads/{center_id}/messages").json()
+    assistant_id = center["messages"][1]["id"]
+    assert center["thread"]["title"] == "Center topic"
+    assert center["thread"]["sketch"] == "Working through the main argument."
+
+    proofs = client.post("/api/threads", json={"fork_message_id": assistant_id}).json()
+    examples = client.post("/api/threads", json={"fork_message_id": assistant_id}).json()
+    client.post(f"/api/threads/{proofs['id']}/messages", json={"content": "Look at proofs"})
+    client.post(f"/api/threads/{examples['id']}/messages", json={"content": "Look at examples"})
+    client.post(f"/api/threads/{proofs['id']}/messages", json={"content": "Continue proofs"})
+
+    recorded = next(item for item in calls if item["user"] == "Continue proofs")
+    mapped = recorded["learning_map"]
+    assert "- Proofs (you are here)" in mapped
+    assert "At:" not in mapped
+    assert "The proof starts here." not in mapped
+    assert "last text block" in mapped
+    assert mapped.endswith("Do not answer this map.")
+    assert "Working through the main argument." in mapped
+    assert "Looking at proof techniques." in mapped
+    assert "Trying numerical examples." in mapped
+    assert "Look at examples" not in json.dumps(recorded["path"])
+    assert "Look at examples" not in json.dumps(
+        [message["id"] for message in recorded["path"]]
+    )
+
+    proofs_view = client.get(f"/api/threads/{proofs['id']}/messages").json()
+    assert "Look at examples" not in json.dumps(proofs_view["messages"])
+    assert proofs_view["thread"]["sketch"] == "Looking at proof techniques."
+
+    client.post(f"/api/threads/{center_id}/messages", json={"content": "A later turn"})
+    later = client.get(f"/api/threads/{center_id}/messages").json()
+    assert later["thread"]["title"] == "Center topic"
+    assert later["thread"]["sketch"] == "Working through the main argument."
+
+    def boom(
+        path,
+        goal,
+        model=None,
+        web=False,
+        docs=False,
+        effort=None,
+        extended_thinking=False,
+        charts=False,
+        learning_map=None,
+    ):
+        raise LLMError("nope")
+
+    monkeypatch.setattr("app.main.stream_chat", boom)
+    _failed_id, failed_center = create_conversation(client)
+    response = client.post(f"/api/threads/{failed_center}/messages", json={"content": "Hello"})
+    assert parse_sse(response.text)[-1][0] == "error"
+    failed = client.get(f"/api/threads/{failed_center}/messages").json()
+    assert failed["messages"] == []
+    assert failed["thread"]["sketch"] is None
