@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import type { DictationPhase } from "./MicButton";
 
 export function Composer({
   value,
@@ -8,6 +9,8 @@ export function Composer({
   placeholder,
   prefillKey,
   controls,
+  mic,
+  dictationPhase = "idle",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -16,6 +19,8 @@ export function Composer({
   placeholder: string;
   prefillKey: number;
   controls?: ReactNode;
+  mic?: ReactNode;
+  dictationPhase?: DictationPhase;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -51,9 +56,16 @@ export function Composer({
         className="w-full resize-none rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-xs text-muted">Enter to send · Shift+Enter for a new line</span>
+        <span className="text-xs text-muted">
+          {dictationPhase === "listening"
+            ? "Listening…"
+            : dictationPhase === "transcribing"
+              ? "Transcribing…"
+              : "Enter to send · Shift+Enter for a new line"}
+        </span>
         <div className="flex items-center gap-2">
           {controls}
+          {mic}
           <button
             type="submit"
             disabled={disabled || !value.trim()}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Breadcrumb } from "./Breadcrumb";
 import { Composer } from "./Composer";
+import type { DictationPhase } from "./MicButton";
 import { MessageView, StreamingMessage } from "./Message";
 import { PinnedGoal } from "./PinnedGoal";
 import { SelectionPopover } from "./SelectionPopover";
@@ -33,6 +34,8 @@ export function ChatPane({
   onSelectThread,
   onSaveGoal,
   controls,
+  mic,
+  dictationPhase,
   onContinue,
 }: {
   view: ThreadView | null;
@@ -49,6 +52,8 @@ export function ChatPane({
   onSelectThread: (threadId: string) => void;
   onSaveGoal: (goal: string) => Promise<void>;
   controls: ReactNode;
+  mic: ReactNode;
+  dictationPhase: DictationPhase;
   onContinue: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -149,6 +154,8 @@ export function ChatPane({
         disabled={sending || !view}
         prefillKey={prefillKey}
         controls={controls}
+        mic={mic}
+        dictationPhase={dictationPhase}
         placeholder={sideNode ? "Continue this side node" : "Message the center node"}
       />
       {selection && !sending && (

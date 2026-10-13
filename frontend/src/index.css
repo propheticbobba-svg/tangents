@@ -22,6 +22,8 @@
   --muted: #6f6b63;
   --accent: #0f6e6b;
   --user: #e5f2f1;
+  --mic-idle: #0a4a48;
+  --mic-live: #1aa39c;
   color-scheme: light;
 }
 
@@ -33,6 +35,8 @@
   --muted: #a39e94;
   --accent: #8fd9d4;
   --user: #1a2e2d;
+  --mic-idle: #3d6562;
+  --mic-live: #8fd9d4;
   color-scheme: dark;
 }
 
@@ -146,4 +150,39 @@ textarea {
 .react-flow__attribution {
   background: transparent !important;
   color: var(--muted) !important;
+}
+
+.mic-idle {
+  background: var(--mic-idle);
+  color: #f7fffe;
+}
+
+.mic-live {
+  background: var(--mic-live);
+  color: #f7fffe;
+  animation: mic-pulse 1.2s ease-out infinite;
+}
+
+.dark .mic-live {
+  color: #102220;
+}
+
+@keyframes mic-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mic-live) 65%, transparent);
+  }
+  70% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-live {
+    animation: none;
+  }
 }

@@ -10,6 +10,7 @@ dependencies = [
     "markitdown[docx,pdf,pptx,xlsx]>=0.1.8",
     "numpy>=2.4.6",
     "onnxruntime>=1.17",
+    "parakeet-mlx>=0.5.3",
     "pdfplumber>=0.11",
     "pypdfium2>=5",
     "python-dotenv>=1.0",

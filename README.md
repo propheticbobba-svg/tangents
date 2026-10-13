@@ -74,6 +74,10 @@ Each node keeps a short sketch of the kind of work in it. After a successful rep
 
 The next turn in that conversation prepends a map of every node (title, sketch, and `Branched from:`) to the API copy of the new user message. Stored messages stay the parent-id path only. The map header tells the model to answer the last text block of that turn, which is the user's new message. Fork quotes stay on the tree hover. They are not copied into the map.
 
+## Dictation
+
+The mic beside Send records in the browser. Click once to listen, click again to stop. The server transcribes the clip locally with Parakeet TDT 0.6B v3 (`mlx-community/parakeet-tdt-0.6b-v3`) and appends the text to the composer. It is not sent until you press Enter or Send. The first transcription downloads the model (about 600 MB) into the Hugging Face cache; later clicks reuse it. Apple Silicon is required. Audio is not stored and is not sent to Anthropic.
+
 ## Schema
 
 SQLite, one file, via `sqlite3`. Message `content` is a JSON array of raw Anthropic content blocks, stored as returned and sent back unchanged. User messages are stored as `[{"type": "text", "text": "..."}]`.
@@ -126,6 +130,7 @@ Stored messages are not edited or deleted, except the user message of a turn tha
 | `GET` | `/api/threads/{id}/messages` | | The thread's own messages, the fork-point message (`forked_from`), and `ancestry` from the center node to this thread. |
 | `POST` | `/api/threads` | `{fork_message_id}` | Creates a side node. The fork point must be an assistant message. |
 | `POST` | `/api/threads/{id}/messages` | `{content, model?, web?, docs?, effort?, extended_thinking?}` | SSE stream. Events: `user_message`, `thinking` (`{text}`), `delta` (`{text}`), `compaction` (`{content}`, when the API compacts), `web_activity`, `web_result`, `done` (the saved assistant message, including usage), `error`. `web` and `docs` default to false. `effort` is `low`, `medium`, `high`, `xhigh`, or `max`. |
+| `POST` | `/api/transcribe` | multipart `audio` (WAV) | `{text}`. Local Parakeet. 400 if the file is not a WAV, 413 over 8 MB, 503 if the model fails. |
 
 A failed chat turn emits `error` and deletes the user message it had just saved, so the tree does not keep a turn that never got a reply.
 

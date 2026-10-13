@@ -73,6 +73,12 @@ export async function deleteDocument(id: string): Promise<void> {
   if (!response.ok) throw new Error(await errorMessage(response));
 }
 
+export function transcribe(audio: Blob): Promise<{ text: string }> {
+  const body = new FormData();
+  body.append("audio", audio, "dictation.wav");
+  return request("/api/transcribe", { method: "POST", body });
+}
+
 export function getMessages(threadId: string): Promise<ThreadView> {
   return request(`/api/threads/${threadId}/messages`);
 }
