@@ -14,7 +14,9 @@ import {
   uploadDocument,
 } from "./api";
 import { ChatPane } from "./ChatPane";
+import { appendTranscript } from "./dictation";
 import { DocumentsPanel } from "./DocumentsPanel";
+import { MicButton, type DictationPhase } from "./MicButton";
 import { ResizeHandle } from "./ResizeHandle";
 import { TreeView } from "./TreeView";
 import { loadCharts, saveCharts } from "./charts";
@@ -68,6 +70,7 @@ export function App() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [view, setView] = useState<ThreadView | null>(null);
   const [draft, setDraft] = useState("");
+  const [dictationPhase, setDictationPhase] = useState<DictationPhase>("idle");
   const [prefillKey, setPrefillKey] = useState(0);
   const [streaming, setStreaming] = useState<StreamingTurn | null>(null);
   const [sending, setSending] = useState(false);
@@ -593,6 +596,18 @@ export function App() {
                 }}
               />
             }
+            mic={
+              <MicButton
+                disabled={sending || !view}
+                onText={(spoken) => setDraft((current) => appendTranscript(current, spoken))}
+                onError={setError}
+                onPhase={(phase) => {
+                  setDictationPhase(phase);
+                  if (phase === "listening") setError(null);
+                }}
+              />
+            }
+            dictationPhase={dictationPhase}
             onContinue={() => {
               if (threadId && !sending) void send(threadId, "Continue");
             }}

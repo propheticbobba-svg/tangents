@@ -167,6 +167,15 @@ Files: `backend/app/learning_map.py`, `suggest_sketch` / `attach_learning_map` /
 - If the map does not fit in 8000 characters, drop the deepest unprotected side nodes first (later siblings first). Always keep the header, the current node, its ancestors, the `(map truncated)` line, and the closing line that says the last text block is the user's new message.
 - Tree card hover still shows the fork snippet. When a sketch exists, it is appended after a blank line. Card width still uses only the title and the Center / Side node label.
 
+## Dictation
+
+Files: `backend/app/speech.py`, the transcribe route in `backend/app/main.py`, `frontend/src/dictation.ts`, `frontend/src/MicButton.tsx`, `frontend/src/Composer.tsx`, `frontend/src/ChatPane.tsx`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/index.css`.
+
+- Click starts listening and the button uses `mic-live` (lighter, pulsing). Idle and transcribing use `mic-idle` (darker, no pulse). Reduced motion keeps the live color and drops the animation.
+- Transcript text is appended to the draft and is not auto-sent. A send while listening discards the recording.
+- No speech, a denied mic, and a failed transcribe surface on the existing error line. Audio is not stored.
+- Tests never download the model.
+
 ## Removed
 
 - Merge back is gone. There is no summary call, no merge route, and no control that copies a side node onto its parent. A side node's messages stay on that node. A stored row with `is_note` still renders as a note; nothing creates new notes.

@@ -12,11 +12,14 @@ import threading
 from pathlib import Path
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from tempfile import NamedTemporaryFile
 from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from app import speech
 
 from app.config import get_settings, load_settings
 from app.context import get_context
@@ -252,6 +255,33 @@ def post_document(conversation_id: str, file: UploadFile = File()) -> dict:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         conn.close()
+
+
+@app.post("/api/transcribe")
+async def post_transcribe(audio: UploadFile = File()) -> dict:
+    data = await audio.read()
+    if len(data) > speech.TRANSCRIBE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Recording is larger than 8 MB")
+    try:
+        speech.validate_wav(data)
+    except speech.UnsupportedAudio as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    tmp = NamedTemporaryFile(suffix=".wav", delete=False)
+    try:
+        tmp.write(data)
+        tmp.close()
+        text = await asyncio.get_running_loop().run_in_executor(
+            speech.speech_executor(),
+            lambda: speech.transcribe_wav(tmp.name),
+        )
+        return {"text": text}
+    except speech.SpeechError:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not transcribe that recording",
+        ) from None
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
 
 
 @app.delete("/api/documents/{document_id}", status_code=204)
