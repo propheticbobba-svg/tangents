@@ -62,6 +62,12 @@ function subtreeIds(threads: Thread[], rootId: string): Set<string> {
   return ids;
 }
 
+function toggleClass(on: boolean): string {
+  return `btn-ghost glow-ring shrink-0${
+    on ? " is-active border-[color-mix(in_srgb,var(--ink)_45%,transparent)] text-ink" : ""
+  }`;
+}
+
 export function App() {
   const { resolved, toggle } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -269,7 +275,7 @@ export function App() {
         docs && documents.length > 0,
         charts,
         info.efforts.length ? effort : null,
-        info.thinking === "extended" && extended,
+        (info.thinking as "adaptive" | "extended") === "extended" && extended,
         (event) => {
         if (event.event === "user_message") {
           setView((current) =>
@@ -419,10 +425,10 @@ export function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-paper text-ink">
-      <header className="relative z-20 flex h-14 items-center gap-3 border-b border-line px-4">
-        <span className="font-serif text-lg">Tangents</span>
-        <div className="relative" ref={menuRef}>
+    <div className="flex h-full flex-col text-ink">
+      <header className="glass relative z-20 flex h-14 shrink-0 items-center gap-2 border-x-0 border-t-0 px-4">
+        <span className="mr-1 shrink-0 font-sans text-[17px] font-semibold tracking-tight">Tangents</span>
+        <div className="relative min-w-0" ref={menuRef}>
           <button
             type="button"
             disabled={sending || conversations.length === 0}
@@ -430,21 +436,24 @@ export function App() {
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="inline-block max-w-xs truncate rounded-md border border-line bg-panel px-2 py-1 text-left text-sm disabled:opacity-40"
+            className="btn-ghost glow-ring max-w-xs"
           >
-            {currentLabel}
+            <span className="truncate">{currentLabel}</span>
           </button>
           {menuOpen && (
             <ul
               role="listbox"
               aria-label="Conversations"
-              className="absolute left-0 top-full z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded-md border border-line bg-panel py-1 shadow-md"
+              className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-xl py-1 shadow-lg"
             >
               {conversations.map((conversation) => {
                 const label = conversation.goal_snippet || "New conversation";
                 const selected = conversation.id === conversationId;
                 return (
-                  <li key={conversation.id} className="flex items-center gap-1 pr-1">
+                  <li
+                    key={conversation.id}
+                    className="flex items-center gap-1 border-b border-line pr-1 last:border-b-0 hover:bg-user"
+                  >
                     <button
                       type="button"
                       role="option"
@@ -453,7 +462,7 @@ export function App() {
                         setMenuOpen(false);
                         void pickConversation(conversation.id);
                       }}
-                      className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm ${selected ? "text-accent" : "hover:bg-paper"}`}
+                      className={`glow-ring min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-left text-sm ${selected ? "font-medium text-ink" : "text-muted hover:text-ink"}`}
                     >
                       {label}
                     </button>
@@ -462,7 +471,7 @@ export function App() {
                       aria-label={`Delete ${label}`}
                       disabled={sending}
                       onClick={() => void removeConversation(conversation.id)}
-                      className="shrink-0 rounded px-1.5 py-1 text-xs text-muted hover:text-rose-700 disabled:opacity-40 dark:hover:text-rose-300"
+                      className="glow-ring shrink-0 rounded-full px-2 py-1 text-xs text-muted hover:text-danger disabled:opacity-40"
                     >
                       Delete
                     </button>
@@ -476,7 +485,7 @@ export function App() {
           type="button"
           disabled={sending}
           onClick={() => void startConversation()}
-          className="rounded-md border border-line px-2 py-1 text-sm hover:border-accent disabled:opacity-40"
+          className="btn-ghost glow-ring shrink-0 whitespace-nowrap"
         >
           New conversation
         </button>
@@ -491,9 +500,7 @@ export function App() {
             setWeb(next);
             saveWebSearch(next);
           }}
-          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
-            web ? "border-accent text-accent" : "border-line text-muted"
-          }`}
+          className={toggleClass(web)}
         >
           Web
         </button>
@@ -508,9 +515,7 @@ export function App() {
             setDocs(next);
             saveDocSearch(next);
           }}
-          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
-            docs ? "border-accent text-accent" : "border-line text-muted"
-          }`}
+          className={toggleClass(docs)}
         >
           Docs
         </button>
@@ -525,9 +530,7 @@ export function App() {
             setCharts(next);
             saveCharts(next);
           }}
-          className={`rounded-md border px-2 py-1 text-sm disabled:opacity-40 ${
-            charts ? "border-accent text-accent" : "border-line text-muted"
-          }`}
+          className={toggleClass(charts)}
         >
           Charts
         </button>
@@ -535,24 +538,26 @@ export function App() {
         <button
           type="button"
           onClick={toggle}
-          className="rounded-md border border-line px-2 py-1 text-sm"
+          className="btn-ghost glow-ring shrink-0 whitespace-nowrap"
         >
           {resolved === "dark" ? "Light" : "Dark"}
         </button>
       </header>
       {booting ? (
-        <p className="p-6 text-sm text-muted">Loading…</p>
+        <p className="label shimmer p-6">Loading…</p>
       ) : !conversationId ? (
-        <div className="flex flex-1 flex-col items-start justify-center gap-3 px-8">
-          <h1 className="font-serif text-2xl">A center node, and side nodes for the tangents.</h1>
-          <p className="max-w-md text-sm text-muted">
+        <div className="fade-in flex flex-1 flex-col items-start justify-center gap-6 px-8 py-24 md:px-16">
+          <h1 className="max-w-3xl text-5xl font-light leading-[1.05] tracking-tight md:text-6xl">
+            A center node, and side nodes for the tangents.
+          </h1>
+          <p className="max-w-lg text-base text-muted">
             The main thread never picks up tokens from a side node. A side node only inherits the path up to the message you forked from.
           </p>
-          {error && <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
           <button
             type="button"
             onClick={() => void startConversation()}
-            className="rounded-md bg-[#0f6e6b] px-3 py-1.5 text-sm text-[#f7fffe]"
+            className="btn-primary glow-ring px-5 py-2"
           >
             New conversation
           </button>
@@ -615,7 +620,7 @@ export function App() {
           <aside
             ref={asideRef}
             style={{ width: sidebarWidth }}
-            className="relative flex shrink-0 flex-col border-l border-line"
+            className="glass relative flex shrink-0 flex-col border-y-0 border-r-0"
           >
             <ResizeHandle width={sidebarWidth} onPreview={previewSidebarWidth} onCommit={commitSidebarWidth} />
             <DocumentsPanel
@@ -626,7 +631,7 @@ export function App() {
               onUpload={(files) => void uploadFiles(files)}
               onDelete={(document) => void removeDocument(document)}
             />
-            <div className="border-b border-line px-3 py-2 text-[10px] uppercase tracking-wide text-muted">
+            <div className="label border-b border-line px-3 py-2">
               Tree
             </div>
             <div className="min-h-0 flex-1">
