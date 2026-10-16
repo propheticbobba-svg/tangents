@@ -20,8 +20,8 @@ const GAP_X = 36;
 const GAP_Y = 64;
 // Horizontal padding (px-3), the border, and a few pixels so subpixel rounding cannot clip the last letter.
 const CARD_CHROME = 12 * 2 + 2 + 6;
-const TITLE_FONT = '500 14px "Source Sans 3", ui-sans-serif, system-ui, sans-serif';
-const KIND_FONT = '400 10px "Source Sans 3", ui-sans-serif, system-ui, sans-serif';
+const TITLE_FONT = '500 14px "Geist", ui-sans-serif, system-ui, sans-serif';
+const KIND_FONT = '400 10px "Geist", ui-sans-serif, system-ui, sans-serif';
 
 let measureCanvas: HTMLCanvasElement | null = null;
 
