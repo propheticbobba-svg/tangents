@@ -27,8 +27,8 @@ function useDarkClass(): boolean {
 
 export function ChartPlaceholder() {
   return (
-    <div className="my-3 flex h-24 select-none items-center justify-center rounded-lg border border-dashed border-line text-xs text-muted">
-      Drawing chart…
+    <div className="glass label my-3 flex h-24 select-none items-center justify-center rounded-lg">
+      <span className="shimmer">Drawing chart…</span>
     </div>
   );
 }
@@ -88,7 +88,7 @@ export function PlotlyChart({ source }: { source: string }) {
   if (!spec || failed) {
     return (
       <div className="my-3">
-        <p className="select-none text-xs text-muted">Could not draw this chart.</p>
+        <p className="label select-none">Could not draw this chart.</p>
         <pre>
           <code>{source}</code>
         </pre>
@@ -101,7 +101,7 @@ export function PlotlyChart({ source }: { source: string }) {
       data-chart={CHART_LANGUAGE}
       role="img"
       aria-label={chartLabel(spec)}
-      className="my-3 w-full select-none overflow-hidden rounded-lg border border-line bg-panel"
+      className="my-3 w-full select-none overflow-hidden rounded-lg glass"
       style={{ height: chartHeight(spec) }}
     >
       <div ref={ref} className="h-full w-full" />
