@@ -90,7 +90,7 @@ export function MessageView({
     <article
       data-message-id={message.id}
       data-role={message.role}
-      className={user ? "ml-16" : "mr-10"}
+      className={`fade-in ${user ? "ml-16" : "mr-10"}`}
     >
       {summaries.map((summary, index) => (
         <CompactionDivider key={`${message.id}-compact-${index}`} summary={summary} />
@@ -109,24 +109,28 @@ export function MessageView({
       <div
         className={
           user
-            ? `rounded-lg px-3 py-2 ${message.is_note ? "border border-dashed border-accent/50 bg-panel" : "bg-user"}`
+            ? `ml-auto w-fit max-w-full rounded-2xl border px-4 py-2.5 backdrop-blur ${
+                message.is_note
+                  ? "border-dashed border-line bg-panel"
+                  : "border-line bg-user"
+              }`
             : ""
         }
       >
-        {message.is_note && (
-          <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">Note</div>
-        )}
+        {message.is_note && <div className="label mb-1">Note</div>}
         {text && <Markdown text={text} />}
       </div>
       {message.role === "assistant" && stopReason === "max_tokens" && (
-        <div className="mt-1 flex items-center gap-2">
-          <p className="text-xs text-muted">Claude hit the maximum length for this message.</p>
+        <div className="mt-2 flex items-center gap-2">
+          <p className="font-mono text-[11px] text-muted">
+            Claude hit the maximum length for this message.
+          </p>
           {onContinue && (
             <button
               type="button"
               disabled={forkDisabled}
               onClick={onContinue}
-              className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-ink disabled:opacity-40"
+              className="btn-ghost glow-ring px-2.5 py-0.5 font-mono text-[11px]"
             >
               Continue
             </button>
@@ -134,10 +138,10 @@ export function MessageView({
         </div>
       )}
       {message.role === "assistant" && stopReason === "model_context_window_exceeded" && (
-        <p className="mt-1 text-xs text-muted">This node ran out of context.</p>
+        <p className="mt-2 font-mono text-[11px] text-muted">This node ran out of context.</p>
       )}
       {message.role === "assistant" && stopReason === "refusal" && (
-        <p className="mt-1 text-xs text-muted">Claude stopped this reply.</p>
+        <p className="mt-2 font-mono text-[11px] text-muted">Claude stopped this reply.</p>
       )}
       {message.role === "assistant" && message.usage && <UsageFooter usage={message.usage} />}
       {message.role === "assistant" && (
@@ -146,7 +150,7 @@ export function MessageView({
             type="button"
             disabled={forkDisabled}
             onClick={() => onFork(message.id)}
-            className="pointer-events-auto sticky bottom-3 z-10 mt-1 ml-auto block w-fit rounded-md border border-line bg-paper px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-ink disabled:opacity-40"
+            className="pointer-events-auto sticky bottom-3 z-10 mt-2 ml-auto block w-fit glass glow-ring rounded-full px-3 py-0.5 font-mono text-[11px] text-muted transition-colors hover:text-ink disabled:opacity-40"
           >
             Fork
           </button>
@@ -172,7 +176,7 @@ export function StreamingMessage({
   thinkingEndedAt: number | null;
 }) {
   return (
-    <article className="mr-10" data-role="assistant">
+    <article className="fade-in mr-10" data-role="assistant">
       {summaries.map((summary, index) => (
         <CompactionDivider key={`stream-compact-${index}`} summary={summary} />
       ))}
@@ -186,7 +190,7 @@ export function StreamingMessage({
         />
       )}
       {activity.length > 0 && (
-        <ul className="mb-2 select-none space-y-0.5 text-xs text-muted">
+        <ul className="mb-2 select-none space-y-0.5 font-mono text-[11px] text-muted">
           {activity.map((line, index) => (
             <li key={`stream-activity-${index}`} className="truncate">
               {line}
@@ -198,7 +202,7 @@ export function StreamingMessage({
         <Markdown text={text} streaming />
       ) : (
         summaries.length === 0 && activity.length === 0 && thinkingStartedAt === null && (
-          <p className="text-sm text-muted">Thinking…</p>
+          <p className="shimmer w-fit text-sm">Thinking…</p>
         )
       )}
     </article>
