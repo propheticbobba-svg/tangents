@@ -77,7 +77,7 @@ export function ResizeHandle({
       onPointerCancel={finish}
       onDoubleClick={() => onCommit(clampSidebarWidth(DEFAULT_SIDEBAR_WIDTH))}
       onKeyDown={onKeyDown}
-      className="absolute inset-y-0 -left-px z-30 w-1.5 cursor-col-resize touch-none select-none outline-none hover:bg-accent/30 focus-visible:bg-accent/40"
+      className="absolute inset-y-0 -left-px z-30 w-1.5 cursor-col-resize touch-none select-none outline-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:transition-[background-color,box-shadow] before:content-[''] hover:before:bg-ink/40 hover:before:shadow-[0_0_10px_2px_var(--glow)] active:before:bg-ink/70 active:before:shadow-[0_0_12px_3px_var(--glow)] focus-visible:before:bg-ink/60 focus-visible:before:shadow-[0_0_10px_2px_var(--glow)]"
     />
   );
 }

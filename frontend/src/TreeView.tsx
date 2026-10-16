@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  BackgroundVariant,
   Controls,
   Handle,
   Position,
@@ -18,10 +19,13 @@ import type { Thread } from "./types";
 const NODE_H = 72;
 const GAP_X = 36;
 const GAP_Y = 64;
-// Horizontal padding (px-3), the border, and a few pixels so subpixel rounding cannot clip the last letter.
+// Keep these in sync with ThreadNode: px-3 padding, a 1px border, text-sm font-medium title,
+// and the .label kind line (Geist Mono, 0.65625rem = 10.5px, letter-spacing 0.14em).
+// The extra 6px keeps subpixel rounding from clipping the last letter.
 const CARD_CHROME = 12 * 2 + 2 + 6;
 const TITLE_FONT = '500 14px "Geist", ui-sans-serif, system-ui, sans-serif';
-const KIND_FONT = '400 10px "Geist", ui-sans-serif, system-ui, sans-serif';
+const KIND_FONT = '400 10.5px "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+const KIND_TRACKING = 10.5 * 0.14;
 
 let measureCanvas: HTMLCanvasElement | null = null;
 
@@ -32,14 +36,14 @@ function labelWidth(text: string, font: string, trackingPx = 0): number {
   if (!context) return text.length * 8;
   context.font = font;
   const width = context.measureText(text).width;
-  const tracking = text.length > 1 ? trackingPx * (text.length - 1) : 0;
-  return width + tracking;
+  // CSS letter-spacing is also added after the last character.
+  return width + trackingPx * text.length;
 }
 
 function cardWidth(title: string, kind: string): number {
   const titleWidth = labelWidth(title, TITLE_FONT);
-  // The kind line is uppercase with tracking-wide (0.025em at 10px).
-  const kindWidth = labelWidth(kind.toUpperCase(), KIND_FONT, 0.25);
+  // The kind line is the uppercase .label style.
+  const kindWidth = labelWidth(kind.toUpperCase(), KIND_FONT, KIND_TRACKING);
   return Math.ceil(Math.max(titleWidth, kindWidth) + CARD_CHROME);
 }
 
@@ -67,7 +71,32 @@ function childrenOf(threads: Thread[], parentId: string | null): Thread[] {
     });
 }
 
-function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node<ThreadCard>[]; edges: Edge[] } {
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!query) return;
+    const update = () => setReduced(query.matches);
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  return reduced;
+}
+
+const EDGE_STYLE = { stroke: "var(--line)", strokeWidth: 1 };
+const ACTIVE_EDGE_STYLE = {
+  stroke: "color-mix(in srgb, var(--ink) 55%, transparent)",
+  strokeWidth: 1.25,
+  filter: "drop-shadow(0 0 3px var(--glow))",
+};
+
+function layout(
+  threads: Thread[],
+  activeThreadId: string | null,
+  reducedMotion: boolean,
+): { nodes: Node<ThreadCard>[]; edges: Edge[] } {
   const root = threads.find((thread) => thread.parent_thread_id === null);
   if (!root) return { nodes: [], edges: [] };
 
@@ -120,11 +149,14 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
     const kidsWidth = kids.reduce((sum, kid, index) => sum + (widths.get(kid.id) ?? 0) + (index ? GAP_X : 0), 0);
     let cursor = left + (subtree - kidsWidth) / 2;
     for (const kid of kids) {
+      const intoActive = kid.id === activeThreadId;
       edges.push({
         id: `${thread.id}-${kid.id}`,
         source: thread.id,
         target: kid.id,
         type: "smoothstep",
+        animated: intoActive && !reducedMotion,
+        style: intoActive ? ACTIVE_EDGE_STYLE : EDGE_STYLE,
       });
       place(kid, cursor, top + NODE_H + GAP_Y);
       cursor += (widths.get(kid.id) ?? 0) + GAP_X;
@@ -135,23 +167,25 @@ function layout(threads: Thread[], activeThreadId: string | null): { nodes: Node
   return { nodes, edges };
 }
 
+function handleClass(active: boolean): string {
+  return `!h-[5px] !w-[5px] !min-h-0 !min-w-0 !border-0 ${active ? "!bg-ink" : "!bg-muted"}`;
+}
+
 function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
   const hover = [data.forkSnippet, data.sketch].filter(Boolean).join("\n\n");
   return (
     <div
       title={hover || undefined}
-      className={`group relative w-full rounded-lg border px-3 py-2 shadow-sm ${
-        data.active ? "border-accent bg-user" : "border-line bg-panel"
+      className={`glass group relative w-full rounded-xl px-3 py-2 transition-[border-color,box-shadow] ${
+        data.active ? "glow-ring is-active !border-accent/80" : "hover:!border-muted/60"
       }`}
     >
-      {!data.isCenter && (
-        <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-accent" />
-      )}
+      {!data.isCenter && <Handle type="target" position={Position.Top} className={handleClass(data.active)} />}
       {!data.isCenter && (
         <button
           type="button"
           aria-label={`Delete ${data.title}`}
-          className="nodrag nopan absolute -top-2 right-1 hidden rounded border border-line bg-panel px-1 py-0.5 text-[10px] leading-none text-muted hover:text-rose-700 group-hover:block dark:hover:text-rose-300"
+          className="nodrag nopan absolute -top-2.5 right-2 hidden rounded-full border border-line bg-paper px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-muted transition-colors hover:border-danger/50 hover:text-danger group-hover:block"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -161,16 +195,14 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
           Delete
         </button>
       )}
-      <div className="whitespace-nowrap text-[10px] uppercase tracking-wide text-muted">{data.kind}</div>
-      <div className="whitespace-nowrap text-sm font-medium">{data.title}</div>
+      <div className="label whitespace-nowrap">{data.kind}</div>
+      <div className="whitespace-nowrap text-sm font-medium text-ink">{data.title}</div>
       {data.forkSnippet && (
-        <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[200px] rounded-md border border-line bg-panel p-2 text-xs leading-snug text-muted shadow-lg group-hover:block">
+        <div className="glass fade-in pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[200px] rounded-xl !bg-[color-mix(in_srgb,var(--paper)_90%,transparent)] p-2.5 text-xs leading-snug text-muted shadow-lg group-hover:block">
           {data.forkSnippet}
         </div>
       )}
-      {data.hasChildren && (
-        <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-0 !bg-accent" />
-      )}
+      {data.hasChildren && <Handle type="source" position={Position.Bottom} className={handleClass(data.active)} />}
     </div>
   );
 }
@@ -197,7 +229,11 @@ function Canvas({
   const onDeleteRef = useRef(onDelete);
   onDeleteRef.current = onDelete;
   const [fontsReady, setFontsReady] = useState(() => document.fonts?.status === "loaded");
-  const graph = useMemo(() => layout(threads, activeThreadId), [threads, activeThreadId, fontsReady]);
+  const reducedMotion = usePrefersReducedMotion();
+  const graph = useMemo(
+    () => layout(threads, activeThreadId, reducedMotion),
+    [threads, activeThreadId, reducedMotion, fontsReady],
+  );
   // onDelete stays out of this memo. A new function each render would replace the
   // nodes prop, and React Flow then forgets the measured size of every card.
   const nodes = useMemo(
@@ -269,7 +305,7 @@ function Canvas({
       }}
       proOptions={{ hideAttribution: false }}
     >
-      <Background gap={18} color="var(--line)" />
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--line)" bgColor="transparent" className="opacity-70" />
       <Controls showInteractive={false} />
     </ReactFlow>
   );
