@@ -93,20 +93,23 @@ export function ChatPane({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <PinnedGoal goal={goal} onSave={onSaveGoal} />
-      <div className="flex items-center gap-3 border-b border-line px-4 py-2">
-        {view && (
-          <Breadcrumb
-            ancestry={view.ancestry}
-            currentId={view.thread.id}
-            onSelect={onSelectThread}
-            disabled={sending}
-          />
-        )}
+      <div className="border-b border-line px-4 py-2">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          {view && (
+            <Breadcrumb
+              ancestry={view.ancestry}
+              currentId={view.thread.id}
+              onSelect={onSelectThread}
+              disabled={sending}
+            />
+          )}
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" onMouseUp={captureSelection}>
+      <div className="min-h-0 flex-1 overflow-y-auto" onMouseUp={captureSelection}>
+       <div className="mx-auto w-full max-w-3xl px-6 py-8">
         {view?.forked_from && (
-          <blockquote className="mb-4 border-l-2 border-accent/40 pl-3 text-sm text-muted">
-            <div className="text-[10px] uppercase tracking-wide">Forked from</div>
+          <blockquote className="mb-8 border-l border-line pl-4 text-sm text-muted">
+            <div className="label">Forked from</div>
             <p className="mt-1 line-clamp-3">{forkPreview(messageText(view.forked_from.content))}</p>
           </blockquote>
         )}
@@ -117,7 +120,7 @@ export function ChatPane({
               : "This is the center node. The main thread stays here."}
           </p>
         )}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-8">
           {view?.messages.map((message, index) => (
             <MessageView
               key={message.id}
@@ -141,9 +144,10 @@ export function ChatPane({
           )}
           <div ref={bottomRef} />
         </div>
+       </div>
       </div>
       {error && (
-        <p className="px-4 pb-2 text-sm text-rose-700 dark:text-rose-300" role="alert">
+        <p className="text-danger mx-auto w-full max-w-3xl px-6 pb-2 text-sm" role="alert">
           {error}
         </p>
       )}

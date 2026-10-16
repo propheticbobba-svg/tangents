@@ -41,16 +41,19 @@ export function PinnedGoal({
 
   if (goal === null && !editing) {
     return (
-      <div className="border-b border-line px-4 py-2 text-sm text-muted">
-        The pinned goal appears with the first message on the center node.
+      <div className="glass border-x-0 border-t-0 px-4 py-2.5">
+        <p className="mx-auto max-w-3xl text-sm text-muted">
+          The pinned goal appears with the first message on the center node.
+        </p>
       </div>
     );
   }
 
   if (editing) {
     return (
-      <div className="border-b border-line px-4 py-2">
-        <div className="text-[10px] uppercase tracking-wide text-muted">Goal</div>
+      <div className="glass border-x-0 border-t-0 px-4 py-2.5">
+       <div className="mx-auto max-w-3xl">
+        <div className="label">Goal</div>
         <textarea
           autoFocus
           rows={3}
@@ -69,34 +72,37 @@ export function PinnedGoal({
               void save();
             }
           }}
-          className="mt-1 w-full resize-none bg-transparent font-serif text-sm outline-none"
+          className="mt-1 w-full resize-none bg-transparent text-sm outline-none"
         />
-        {error && <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">{error}</p>}
+        {error && <p className="text-danger mt-1 text-xs">{error}</p>}
+       </div>
       </div>
     );
   }
 
   return (
-    <div className="border-b border-line px-4 py-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-muted">Goal</span>
+    <div className="glass border-x-0 border-t-0 px-4 py-2.5">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-center gap-3">
+          <span className="label">Goal</span>
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="font-mono text-[11px] text-muted transition-colors hover:text-ink"
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
         <button
           type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="text-xs text-accent"
+          onClick={() => setEditing(true)}
+          className={`mt-1 w-full text-left text-sm ${
+            expanded ? "block max-h-48 overflow-y-auto whitespace-pre-wrap" : "line-clamp-2"
+          }`}
         >
-          {expanded ? "Collapse" : "Expand"}
+          {goal}
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className={`mt-1 w-full text-left font-serif text-sm ${
-          expanded ? "block max-h-48 overflow-y-auto whitespace-pre-wrap" : "line-clamp-2"
-        }`}
-      >
-        {goal}
-      </button>
     </div>
   );
 }
