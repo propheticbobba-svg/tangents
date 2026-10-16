@@ -37,7 +37,7 @@ export function MicButtonView({
   return (
     <button
       type="button"
-      className={`grid h-8 w-8 place-items-center rounded-md disabled:opacity-40 ${
+      className={`grid h-8 w-8 place-items-center rounded-full transition-colors disabled:opacity-40 ${
         listening ? "mic-live" : "mic-idle"
       }`}
       aria-label={label}

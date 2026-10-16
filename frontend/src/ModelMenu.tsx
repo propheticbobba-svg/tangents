@@ -57,7 +57,7 @@ export function ModelMenu({
         aria-expanded={open}
         aria-label={`Model and effort, ${label}`}
         onClick={() => setOpen((current) => !current)}
-        className="rounded-md border border-line bg-panel px-2 py-1 text-sm disabled:opacity-40"
+        className="btn-ghost"
       >
         {label}
       </button>
@@ -65,7 +65,7 @@ export function ModelMenu({
         <div
           role="menu"
           aria-label="Model and effort"
-          className="absolute bottom-full right-0 z-20 mb-1 w-64 rounded-md border border-line bg-panel py-1 shadow-md"
+          className="glass fade-in absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl py-1 shadow-lg"
         >
           {MODELS.map((item) => (
             <button
@@ -74,15 +74,15 @@ export function ModelMenu({
               role="menuitemradio"
               aria-checked={item.id === model}
               onClick={() => onModel(item.id)}
-              className="flex w-full items-center justify-between px-2 py-1.5 text-left text-sm hover:bg-paper"
+              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
             >
               <span>{item.label}</span>
-              {item.id === model && <span aria-hidden="true">✓</span>}
+              {item.id === model && <span aria-hidden="true" className="text-ink">✓</span>}
             </button>
           ))}
           {info.efforts.length > 0 && (
             <div className="mt-1 border-t border-line pt-1">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted">Effort</div>
+              <div className="label px-3 py-1">Effort</div>
               {info.efforts.map((level) => (
                 <button
                   key={level}
@@ -93,7 +93,7 @@ export function ModelMenu({
                     onEffort(level);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between px-2 py-1.5 text-left text-sm hover:bg-paper"
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
                 >
                   <span>
                     {EFFORT_LABELS[level]}
@@ -101,24 +101,24 @@ export function ModelMenu({
                       <span className="ml-2 text-xs text-muted">Default</span>
                     )}
                   </span>
-                  {level === effort && <span aria-hidden="true">✓</span>}
+                  {level === effort && <span aria-hidden="true" className="text-ink">✓</span>}
                 </button>
               ))}
             </div>
           )}
           <div className="mt-1 border-t border-line pt-1">
             {info.thinking === "adaptive" ? (
-              <p className="px-2 py-1.5 text-xs text-muted">Thinking is always on for this model.</p>
+              <p className="px-3 py-1.5 text-xs text-muted">Thinking is always on for this model.</p>
             ) : (
               <button
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={extended}
                 onClick={() => onExtended(!extended)}
-                className="flex w-full items-center justify-between px-2 py-1.5 text-left text-sm hover:bg-paper"
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
               >
                 <span>Extended thinking</span>
-                {extended && <span aria-hidden="true">✓</span>}
+                {extended && <span aria-hidden="true" className="text-ink">✓</span>}
               </button>
             )}
           </div>
