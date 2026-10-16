@@ -70,7 +70,7 @@ export function themedLayout(spec: ChartSpec, colors: ChartColors): Layout {
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     font: {
-      family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif',
+      family: '"Geist", ui-sans-serif, system-ui, sans-serif',
       ...(isObject(layout.font) ? layout.font : {}),
       color: colors.ink,
     },
@@ -105,5 +105,5 @@ export function chartLabel(spec: ChartSpec): string {
 export function readChartColors(): ChartColors {
   const style = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-  return { ink: read("--ink", "#1c1b19"), muted: read("--muted", "#6f6b63"), line: read("--line", "#e2dfd6") };
+  return { ink: read("--ink", "#ededed"), muted: read("--muted", "#8f8f8f"), line: read("--line", "rgba(255,255,255,0.10)") };
 }

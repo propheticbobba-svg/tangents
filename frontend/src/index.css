@@ -1,10 +1,29 @@
+/*
+ * Design foundation: dark-first, monochrome, hairline borders, glass panels.
+ * Shared classes (use these instead of re-inventing them per component):
+ *
+ *   .glass        translucent panel bg + backdrop blur + hairline border
+ *   .pill         fully rounded shape, hairline border, comfortable padding
+ *   .btn-primary  filled pill button: white-on-black in dark, black-on-white in light
+ *   .btn-ghost    transparent pill button with hairline border; brightens on hover
+ *   .label        small mono uppercase muted caption, wide tracking
+ *   .glow-ring    soft --glow ring on :focus-visible and on .is-active
+ *   .text-danger  error / destructive text color (--danger)
+ *   .fade-in      short opacity + translate entrance
+ *   .shimmer      animated gradient for loading text or skeleton blocks
+ *
+ * Ambient background: body::before (drifting glows) and body::after (grain and
+ * stars). Both are fixed, pointer-events:none and sit behind #root.
+ * Animations are disabled under prefers-reduced-motion.
+ */
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-paper: var(--paper);
   --color-ink: var(--ink);
   --color-line: var(--line);
@@ -12,31 +31,41 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-user: var(--user);
+  --color-glow: var(--glow);
+  --color-danger: var(--danger);
 }
 
 :root {
-  --paper: #f4f2ec;
-  --ink: #1c1b19;
-  --line: #e2dfd6;
-  --panel: #fbfaf7;
-  --muted: #6f6b63;
-  --accent: #0f6e6b;
-  --user: #e5f2f1;
-  --mic-idle: #0a4a48;
-  --mic-live: #1aa39c;
+  --paper: #fafafa;
+  --ink: #0a0a0a;
+  --line: rgba(0, 0, 0, 0.1);
+  --panel: rgba(255, 255, 255, 0.72);
+  --muted: #5c5c5c;
+  --accent: #0a0a0a;
+  --user: rgba(0, 0, 0, 0.045);
+  --glow: rgba(80, 110, 200, 0.12);
+  --danger: #b91c1c;
+  --mic-idle: #e8e8e8;
+  --mic-live: #0a0a0a;
+  --grain-opacity: 0.025;
+  --stars-opacity: 0;
   color-scheme: light;
 }
 
 .dark {
-  --paper: #131311;
-  --ink: #eceae4;
-  --line: #2e2d29;
-  --panel: #1c1c19;
-  --muted: #a39e94;
-  --accent: #8fd9d4;
-  --user: #1a2e2d;
-  --mic-idle: #3d6562;
-  --mic-live: #8fd9d4;
+  --paper: #050505;
+  --ink: #ededed;
+  --line: rgba(255, 255, 255, 0.1);
+  --panel: rgba(18, 18, 18, 0.72);
+  --muted: #8f8f8f;
+  --accent: #f5f5f5;
+  --user: rgba(255, 255, 255, 0.06);
+  --glow: rgba(140, 170, 255, 0.18);
+  --danger: #f87171;
+  --mic-idle: #1a1a1a;
+  --mic-live: #f5f5f5;
+  --grain-opacity: 0.04;
+  --stars-opacity: 0.55;
   color-scheme: dark;
 }
 
@@ -51,6 +80,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -58,6 +88,198 @@ select,
 textarea {
   font: inherit;
 }
+
+/* ---------- Ambient background ---------- */
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::before {
+  inset: -20%;
+  background:
+    radial-gradient(40% 35% at 25% 20%, var(--glow), transparent 70%),
+    radial-gradient(35% 30% at 78% 75%, var(--glow), transparent 70%);
+  animation: ambient-drift 40s ease-in-out infinite alternate;
+}
+
+body::after {
+  inset: 0;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Stars (dark theme only): body already uses both its pseudo-elements, so html::before carries them. */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--stars-opacity);
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, #fff, transparent),
+    radial-gradient(1px 1px at 34% 62%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 58% 28%, #fff, transparent),
+    radial-gradient(1px 1px at 76% 12%, #fff, transparent),
+    radial-gradient(1px 1px at 88% 54%, #fff, transparent),
+    radial-gradient(1px 1px at 22% 86%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 66% 90%, #fff, transparent),
+    radial-gradient(1px 1px at 46% 44%, #fff, transparent);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* The app shell paints bg-paper, which would hide the ambient layers. Body already
+   paints --paper, so making the shell transparent looks identical minus the glow.
+   UI tickets can drop bg-paper from the shell later. */
+#root > .bg-paper {
+  background-color: transparent;
+}
+
+@keyframes ambient-drift {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+  }
+}
+
+/* ---------- Shared utilities ---------- */
+
+@layer components {
+  .glass {
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid var(--line);
+  }
+
+  .pill {
+    border-radius: 9999px;
+    border: 1px solid var(--line);
+    padding: 0.375rem 0.875rem;
+  }
+
+  .btn-primary,
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 9999px;
+    padding: 0.375rem 0.95rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    cursor: pointer;
+    transition:
+      opacity 0.15s,
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--paper);
+    border: 1px solid var(--accent);
+    font-weight: 500;
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.88;
+    box-shadow: 0 0 18px 2px var(--glow);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--user);
+    border-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  }
+
+  .btn-primary:disabled,
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.65625rem;
+    line-height: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+
+  .glow-ring {
+    transition: box-shadow 0.2s;
+  }
+  .glow-ring:focus-visible,
+  .glow-ring.is-active {
+    outline: none;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent),
+      0 0 18px 2px var(--glow);
+  }
+
+  .text-danger {
+    color: var(--danger);
+  }
+
+  .fade-in {
+    animation: fade-in 0.22s ease-out both;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      100deg,
+      var(--muted) 30%,
+      var(--ink) 50%,
+      var(--muted) 70%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ---------- Markdown ---------- */
 
 .markdown > :first-child {
   margin-top: 0;
@@ -81,31 +303,55 @@ textarea {
   padding-left: 1.25rem;
 }
 .markdown blockquote {
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--line);
   padding-left: 0.75rem;
   color: var(--muted);
 }
+/* Code blocks stay dark in both themes so the github-dark highlight palette is readable. */
 .markdown pre {
   overflow-x: auto;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 0.75rem 0.9rem;
-  background: #1c1b19;
-  color: #f4f2ec;
+  background: #0d0d0d;
+  color: #e6e6e6;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.dark .markdown pre {
+  background: rgba(10, 10, 10, 0.85);
+}
+.markdown pre code,
+.markdown pre code.hljs {
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
 }
 .markdown :not(pre) > code {
-  border-radius: 0.25rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--line);
   background: var(--user);
   padding: 0.1em 0.35em;
-  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 .markdown a {
-  color: var(--accent);
+  color: var(--ink);
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s;
+}
+.markdown a:hover {
+  text-decoration-color: var(--ink);
 }
 .markdown h1,
 .markdown h2,
 .markdown h3 {
   font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0.8em 0 0.3em;
 }
 .markdown .markdown-table {
@@ -113,7 +359,7 @@ textarea {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
 }
 .markdown .markdown-table table {
   width: 100%;
@@ -135,8 +381,13 @@ textarea {
   text-align: right;
 }
 .markdown .markdown-table th {
-  background: var(--panel);
-  font-weight: 600;
+  background: var(--user);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   border-bottom: 1px solid var(--line);
 }
 .markdown .markdown-table td {
@@ -147,30 +398,60 @@ textarea {
   border-bottom: none;
 }
 
+/* ---------- React Flow ---------- */
+
+.react-flow__controls {
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  color: var(--muted);
+  fill: var(--muted);
+  border-bottom: 1px solid var(--line) !important;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--user) !important;
+  color: var(--ink);
+  fill: var(--ink);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
 .react-flow__attribution {
   background: transparent !important;
   color: var(--muted) !important;
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
+
+/* ---------- Mic ---------- */
 
 .mic-idle {
   background: var(--mic-idle);
-  color: #f7fffe;
+  color: var(--ink);
+  border: 1px solid var(--line);
 }
 
 .mic-live {
   background: var(--mic-live);
-  color: #f7fffe;
+  color: var(--paper);
+  box-shadow: 0 0 14px 2px var(--glow);
   animation: mic-pulse 1.2s ease-out infinite;
-}
-
-.dark .mic-live {
-  color: #102220;
 }
 
 @keyframes mic-pulse {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mic-live) 65%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mic-live) 55%, transparent);
   }
   70% {
     transform: scale(1.06);
@@ -182,6 +463,9 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body::before,
+  .fade-in,
+  .shimmer,
   .mic-live {
     animation: none;
   }
