@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DictationPhase } from "./MicButton";
 
 export function Composer({
@@ -23,6 +23,7 @@ export function Composer({
   dictationPhase?: DictationPhase;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     if (prefillKey > 0) ref.current?.focus();
@@ -30,12 +31,19 @@ export function Composer({
 
   return (
     <form
-      className="border-t border-line p-3"
+      className="px-4 pb-4 pt-2"
       onSubmit={(event) => {
         event.preventDefault();
         if (!disabled && value.trim()) onSend();
       }}
     >
+      <div
+        className={`glass glow-ring mx-auto w-full max-w-3xl rounded-3xl p-3 ${
+          focused ? "is-active" : ""
+        } ${disabled ? "opacity-60" : ""}`}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      >
       <label className="sr-only" htmlFor="composer">
         Message
       </label>
@@ -53,10 +61,14 @@ export function Composer({
             if (!disabled && value.trim()) onSend();
           }
         }}
-        className="w-full resize-none rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60"
+        className="w-full resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-xs text-muted">
+        <span
+          className={`label ${
+            dictationPhase === "listening" ? "animate-pulse motion-reduce:animate-none" : ""
+          }`}
+        >
           {dictationPhase === "listening"
             ? "Listening…"
             : dictationPhase === "transcribing"
@@ -69,11 +81,13 @@ export function Composer({
           <button
             type="submit"
             disabled={disabled || !value.trim()}
-            className="rounded-md bg-[#0f6e6b] px-3 py-1.5 text-sm text-[#f7fffe] disabled:opacity-40"
+            className="btn-primary"
           >
             Send
+            <span aria-hidden="true">↑</span>
           </button>
         </div>
+      </div>
       </div>
     </form>
   );
