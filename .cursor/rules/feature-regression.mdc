@@ -15,8 +15,8 @@ Check the area you touched, not the whole app. Backend areas: run `uv run pytest
 
 Files: `frontend/src/App.tsx`, `frontend/src/api.ts`, conversation routes in `backend/app/main.py`, conversation helpers in `backend/app/db.py`.
 
-- The header control lists chats newest first. Choosing a row opens that chat.
-- Each row has Delete. Confirm with the goal snippet, or "New conversation". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
+- The header control is a fixed "Chats" button with a dropdown arrow; it does not show the open chat's name (the pinned goal does), so it never reads like a second New conversation button. It lists chats newest first, the open one in medium weight. Choosing a row opens that chat. A chat with no first message yet is listed as "Untitled".
+- Each row has Delete. Confirm with the goal snippet, or "Untitled". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
 - `DELETE /api/conversations/{id}` returns 204, or 404. Threads and messages point at each other, so null `fork_message_id`, `parent_thread_id`, and `parent_id` before deleting messages, threads, then the conversation. The conversation's chunks_fts, chunks, and documents rows are deleted before the conversation row.
 - New conversation creates an empty center node titled "Center".
 
@@ -29,6 +29,7 @@ Files: `backend/app/context.py`, `backend/app/db.py`, chat routes in `backend/ap
 - A failed turn deletes the user message it just saved and does not keep a goal or title from that turn.
 - Stored message content is raw Anthropic blocks and is not edited. Messages are deleted only by the failed-turn rollback, by deleting a side node (its subtree), and by deleting a whole conversation.
 - Every assistant message has Fork. A text selection offers Fork from this (quote in the composer) and Explain this (quote plus "Explain this." sent immediately).
+- A selection that covers rendered math quotes each formula back as `$latex$` (`selectionText` in `frontend/src/mathText.ts`, from KaTeX's MathML annotation); a selection with no math still uses `Selection.toString()` unchanged. The "Forked from" preview strips Markdown characters only outside `$…$` / `$$…$$`, so `$a_i$` is not shown as `$ai$`. Introduced on `dictated-math`.
 - Fork stays on screen while a long reply scrolls (`sticky bottom-3` on the Fork button in `Message.tsx`). Introduced on `sticky-fork-button`, now on `main`. `frontend/src/Message.test.tsx` covers it: the button keeps `sticky` and `bottom-3`, its nearest non-`contents` ancestor is the `<article>`, and it is never inside a `<p>`. Keep the `pointer-events-none contents` wrapper.
 
 ## Tree and node titles
@@ -151,7 +152,7 @@ Files: `Markdown` in `frontend/src/Message.tsx`, `frontend/src/index.css`, `fron
 - Cell text is selectable. The wrapper and the cells are not `select-none`.
 - A pipe block with no `| --- |` row is not turned into a table. Streaming does not repair a half-written table.
 - A table whose cells are citation spans still renders: `messageText` does not insert newlines between those blocks. `frontend/src/types.test.ts` and `frontend/src/Message.test.tsx` cover the join.
-- No new dependency, no system prompt, and stored message text is not rewritten.
+- Table styling needs no dependency of its own (the `remark-math` / `rehype-katex` plugins beside `remark-gfm` belong to Math rendering), no system prompt, and stored message text is not rewritten.
 - Introduced on `style-markdown-tables`.
 
 ## Learning map
@@ -169,12 +170,44 @@ Files: `backend/app/learning_map.py`, `suggest_sketch` / `attach_learning_map` /
 
 ## Dictation
 
-Files: `backend/app/speech.py`, the transcribe route in `backend/app/main.py`, `frontend/src/dictation.ts`, `frontend/src/MicButton.tsx`, `frontend/src/Composer.tsx`, `frontend/src/ChatPane.tsx`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/index.css`.
+Files: `backend/app/speech.py`, the transcribe route in `backend/app/main.py`, `frontend/src/dictation.ts`, `frontend/src/useDictation.ts`, `frontend/src/MicButton.tsx`, `frontend/src/Composer.tsx`, `frontend/src/draft.ts`, `frontend/src/ChatPane.tsx`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/index.css`, `frontend/src/MicButton.test.tsx`, `frontend/src/useDictation.test.ts`.
 
 - Click starts listening and the button uses `mic-live` (lighter, pulsing). Idle and transcribing use `mic-idle` (darker, no pulse). Reduced motion keeps the live color and drops the animation.
 - Transcript text is appended to the draft and is not auto-sent. A send while listening discards the recording.
 - No speech, a denied mic, and a failed transcribe surface on the existing error line. Audio is not stored.
 - Tests never download the model.
+- `/api/transcribe` still returns `{text}`. The transcript then goes through `/api/dictation/math` (see Dictated math) before it is appended, and the button stays in its transcribing state until that returns. Any failure there appends the plain transcript; dictation never fails because of the math pass. Join spacing still comes from `appendTranscript`.
+- Recording lives in `useDictation`, shared by the mic button and formula voice edits. Only one mic records at a time: the mic button is disabled while a formula owns the mic, and formula voice edits are disabled while the mic button is not idle. A result that arrives after its owner unmounted is dropped, but the idle phase is still reported.
+- The composer is a TipTap (ProseMirror) editor, not a `<textarea>`: `id="composer"`, `role="textbox"`, `aria-label="Message"`, `aria-multiline`. Enter sends (not while an IME is composing), Shift+Enter is a line break, paste is plain text (formula boxes copied inside the composer keep their LaTeX). The draft is a `Draft` (text and formula parts, `frontend/src/draft.ts`), serialized with `serializeDraft` on send. A failed send restores the same `Draft`, formula boxes included. The editor applies an outside value change once (`appliedRef`) and never echoes its own edits back. `frontend/src/Composer.test.tsx` covers Enter / Shift+Enter, empty drafts, clear-then-restore, and the disabled state.
+
+## Math rendering
+
+Files: `frontend/src/mathText.ts`, `Markdown` in `frontend/src/Message.tsx`, the `.katex` rules in `frontend/src/index.css`, the KaTeX stylesheet import in `frontend/src/main.tsx`, the `katex` override in `frontend/package.json`, `frontend/src/mathText.test.ts`, the math cases in `frontend/src/Message.test.tsx`.
+
+- `$…$`, `$$…$$`, `\(…\)`, and `\[…\]` render with KaTeX (`remark-math` + `rehype-katex`) in user messages, assistant messages, and the streaming reply.
+- `normalizeMath` runs before Markdown parsing and is the only judge of which dollars are math, because `remark-math` treats any `$…$` as math. Pandoc rules: an opening `$` is followed by non-space; the closing `$` has non-space before it, no digit after it, and comes before the next blank line (single newlines are allowed). Every other `$` is escaped, so "$5 and $10" stays literal and an unclosed formula shows as text while streaming. Display math alone on its line(s) becomes a `$$` block (blockquote and list prefixes kept); mid-sentence `$$…$$` renders inline.
+- Fenced code (```` ``` ```` / `~~~`) and inline code are never touched, so `plotly` blocks and code keep their dollars. A fence tagged `math` is the one exception: `rehype-katex` renders it as display math, by design.
+- Display math scrolls inside `.katex-display` (`max-width: 100%`, `overflow-x: auto`), so a wide equation never gives the transcript a horizontal scrollbar. KaTeX inherits the text color in both themes.
+- KaTeX runs with `trust: false`, `strict: "ignore"`, `maxExpand: 1000`. Bad LaTeX renders as an error span, not a crash.
+- Display only: stored message content is never rewritten. No system prompt was added for math.
+- `package.json` overrides `katex` to the top-level version, so `rehype-katex` does not pull in an older KaTeX (0.16.x has a prototype-pollution advisory, and its markup would not match the 0.19 stylesheet).
+- Introduced on `dictated-math`.
+
+## Dictated math
+
+Files: `backend/app/mathspeech.py`, `POST /api/dictation/math` and `POST /api/dictation/math/edit` in `backend/app/main.py`, `parseSpokenMath` / `editFormula` in `frontend/src/api.ts`, `frontend/src/draft.ts`, `frontend/src/formulaNode.tsx`, `frontend/src/FormulaChip.tsx`, `frontend/src/formulaContext.ts`, `frontend/src/Composer.tsx`, `frontend/src/App.tsx`, `backend/tests/test_mathspeech.py`, `frontend/src/draft.test.ts`, `frontend/src/FormulaChip.test.tsx`, `frontend/src/api.test.ts`.
+
+- `looks_like_math` is a local regex gate. Speech that fails it is appended as plain text with no API call. It leans toward yes (a false positive costs one Haiku call that finds nothing). A bare hyphen or slash between words ("well-known", "and/or") does not trigger it.
+- Speech that passes goes to Claude Haiku 4.5 (`claude-haiku-4-5`) with one forced tool, `emit_formulas` (`{spoken, latex}` in order). Side call only: nothing is stored and no tool rows enter the tree. 20 s timeout, one retry.
+- The model only names spans. The server finds each `spoken` in the original transcript (ignoring case, spacing, and punctuation; matches must sit on word boundaries) and cuts the text around it verbatim, so non-math words are never rewritten. A span it cannot find is dropped and stays as words. The formula's `spoken` is the original substring.
+- No API key, an API error, a cut-off reply, or an unusable shape returns the plain transcript. `/api/dictation/math` answers 200 for any valid input and 422 over 4000 characters.
+- Ambiguous grouping takes the most likely reading; a trailing "divided by" / "over" after several terms divides the whole expression. Named formulas ("the backpropagation formula") become their standard form.
+- Each formula is an atomic inline box in the composer, rendered in display style. Hover, or selecting it with the keyboard, shows **Edit with text**, **Edit with voice**, and **Undo math**. The toolbar and the LaTeX editor are portals, measured and centered above the box with a gap (below when there is no room), and never cover the formula. Position them with plain `left`/`top`, not a transform: `.fade-in` animates `transform` and holds its end state, which silently overrides a positioning transform. The formula stays visible during a voice edit (a pulsing outline, `is-voice`); never put `.shimmer` on it, since its transparent text hides KaTeX.
+- Edit with text: LaTeX plus a live preview. Enter or clicking outside saves, Shift+Enter is a new line, Escape cancels, saving empty cancels. Dollar signs are stripped.
+- Edit with voice records with `useDictation`, then `/api/dictation/math/edit` (forced `emit_latex`) applies the correction ("only the 6 is over 3") or takes a re-said formula. The result is applied to the box with that id, and dropped if the box is gone. 503 "Set ANTHROPIC_API_KEY to edit formulas by voice" without a key; 503 "Could not update that formula" on failure; both show on the error line.
+- Undo math replaces the box with the spoken words.
+- Composer only. A formula is sent as `$latex$`, with spaces added where a neighbouring word, digit, or formula would break the dollar rules. Sent messages are not editable; they render through Math rendering.
+- Introduced on `dictated-math`.
 
 ## Removed
 

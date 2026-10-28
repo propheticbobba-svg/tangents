@@ -19,7 +19,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import speech
+from app import mathspeech, speech
 
 from app.config import get_settings, load_settings
 from app.context import get_context
@@ -107,6 +107,15 @@ class NewMessage(BaseModel):
 
 class NewThread(BaseModel):
     fork_message_id: str
+
+
+class SpokenMath(BaseModel):
+    text: str = Field(max_length=mathspeech.TRANSCRIPT_MAX_CHARS)
+
+
+class FormulaEdit(BaseModel):
+    latex: str = Field(min_length=1, max_length=mathspeech.LATEX_MAX_CHARS)
+    spoken: str = Field(min_length=1, max_length=mathspeech.TRANSCRIPT_MAX_CHARS)
 
 
 def _sse(event: str, data: dict) -> str:
@@ -282,6 +291,23 @@ async def post_transcribe(audio: UploadFile = File()) -> dict:
         ) from None
     finally:
         Path(tmp.name).unlink(missing_ok=True)
+
+
+@app.post("/api/dictation/math")
+def post_dictation_math(body: SpokenMath) -> dict:
+    """Split a dictated transcript into text and formulas. Falls back to plain text."""
+    return {"parts": mathspeech.parse_spoken_math(body.text)}
+
+
+@app.post("/api/dictation/math/edit")
+def post_formula_edit(body: FormulaEdit) -> dict:
+    if not get_settings().api_key:
+        raise HTTPException(status_code=503, detail="Set ANTHROPIC_API_KEY to edit formulas by voice")
+    try:
+        return {"latex": mathspeech.edit_formula(body.latex, body.spoken)}
+    except LLMError as exc:
+        logger.warning("formula edit failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Could not update that formula") from None
 
 
 @app.delete("/api/documents/{document_id}", status_code=204)

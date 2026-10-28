@@ -229,3 +229,58 @@ describe("Markdown tables", () => {
     expect(screen.getByRole("cell", { name: "54.0%" })).toBeTruthy();
   });
 });
+
+describe("Markdown math", () => {
+  it("renders inline math in assistant and user messages", () => {
+    const fraction = [{ type: "text", text: "Half is $\\frac{1}{2}$." }];
+    const { container: assistant } = render(
+      <MessageView message={message("assistant", { content: fraction })} onFork={vi.fn()} forkDisabled={false} />,
+    );
+    expect(assistant.querySelector(".katex .mfrac")).not.toBeNull();
+    cleanup();
+    const { container: user } = render(
+      <MessageView message={message("user", { content: fraction })} onFork={vi.fn()} forkDisabled={false} />,
+    );
+    expect(user.querySelector(".katex .mfrac")).not.toBeNull();
+  });
+
+  it("renders display math as a block for every delimiter form", () => {
+    for (const source of ["$$x^2$$", "\\[x^2\\]", "$$\nx^2\n$$"]) {
+      const { container } = render(<Markdown text={source} />);
+      expect(container.querySelector(".katex-display")).not.toBeNull();
+      cleanup();
+    }
+  });
+
+  it("renders backslash-paren math inline", () => {
+    const { container } = render(<Markdown text="so \(a_i\) holds" />);
+    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(container.querySelector("em")).toBeNull();
+  });
+
+  it("keeps currency as text", () => {
+    const { container } = render(<Markdown text="costs $5 and $10 total" />);
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toBe("costs $5 and $10 total");
+  });
+
+  it("renders math and a literal dollar inside a table", () => {
+    const { container } = render(<Markdown text={"| a | b |\n| --- | --- |\n| $x$ | $5 |"} />);
+    const cells = container.querySelectorAll(".markdown-table td");
+    expect(cells).toHaveLength(2);
+    expect(cells[0]?.querySelector(".katex")).not.toBeNull();
+    expect(cells[1]?.textContent).toBe("$5");
+  });
+
+  it("leaves code blocks alone", () => {
+    const { container } = render(<Markdown text={"```js\nconst a = `$x$`;\n```"} />);
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.querySelector("pre")?.textContent).toContain("$x$");
+  });
+
+  it("shows a half-written formula as text while streaming", () => {
+    const { container } = render(<Markdown text="so $\frac{1}{" streaming />);
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toContain("$\\frac{1}{");
+  });
+});

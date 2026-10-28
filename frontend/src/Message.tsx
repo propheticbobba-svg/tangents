@@ -1,11 +1,14 @@
 import type { Element, ElementContent } from "hast";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { CHART_LANGUAGE } from "./chart";
 import { ChartPlaceholder, PlotlyChart } from "./PlotlyChart";
 import { CompactionDivider } from "./CompactionDivider";
 import { DocPassages } from "./DocPassages";
+import { KATEX_OPTIONS, normalizeMath } from "./mathText";
 import { UsageFooter } from "./UsageFooter";
 import { WebActivity } from "./WebActivity";
 import { ThinkingSection } from "./ThinkingSection";
@@ -57,11 +60,14 @@ export function Markdown({ text, streaming = false }: { text: string; streaming?
   return (
     <div className="markdown text-sm leading-relaxed">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { plainText: [CHART_LANGUAGE] }]]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[
+          [rehypeKatex, KATEX_OPTIONS],
+          [rehypeHighlight, { plainText: [CHART_LANGUAGE] }],
+        ]}
         components={streaming ? STREAMING_COMPONENTS : FINISHED_COMPONENTS}
       >
-        {text}
+        {normalizeMath(text)}
       </ReactMarkdown>
     </div>
   );

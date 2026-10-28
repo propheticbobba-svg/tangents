@@ -14,7 +14,7 @@ import {
   uploadDocument,
 } from "./api";
 import { ChatPane } from "./ChatPane";
-import { appendTranscript } from "./dictation";
+import { appendDictation, emptyDraft, isDraftEmpty, serializeDraft, textDraft, type Draft } from "./draft";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { MicButton, type DictationPhase } from "./MicButton";
 import { ResizeHandle } from "./ResizeHandle";
@@ -68,6 +68,9 @@ function toggleClass(on: boolean): string {
   }`;
 }
 
+/** A chat with no first message yet has no goal to name it by. */
+const UNTITLED_CHAT = "Untitled";
+
 export function App() {
   const { resolved, toggle } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -75,8 +78,9 @@ export function App() {
   const [tree, setTree] = useState<Tree | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [view, setView] = useState<ThreadView | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [dictationPhase, setDictationPhase] = useState<DictationPhase>("idle");
+  const [formulaMic, setFormulaMic] = useState<string | null>(null);
   const [prefillKey, setPrefillKey] = useState(0);
   const [streaming, setStreaming] = useState<StreamingTurn | null>(null);
   const [sending, setSending] = useState(false);
@@ -96,9 +100,6 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(() => clampSidebarWidth(loadSidebarWidth()));
   const asideRef = useRef<HTMLElement>(null);
 
-  const currentLabel =
-    conversations.find((item) => item.id === conversationId)?.goal_snippet ||
-    (conversationId ? "New conversation" : "No conversations");
 
   async function openConversation(id: string, preferredThreadId?: string) {
     const [nextTree, nextDocuments] = await Promise.all([getTree(id), listDocuments(id)]);
@@ -161,7 +162,7 @@ export function App() {
     if (sending) return;
     setMenuOpen(false);
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     try {
       const created = await createConversation();
       setConversations(await listConversations());
@@ -175,7 +176,7 @@ export function App() {
     if (sending) return;
     const current = conversations.find((item) => item.id === id);
     if (!current) return;
-    const label = current.goal_snippet || "New conversation";
+    const label = current.goal_snippet || UNTITLED_CHAT;
     if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
     setError(null);
     try {
@@ -184,7 +185,7 @@ export function App() {
       const remaining = conversations.filter((item) => item.id !== id);
       setConversations(remaining);
       if (id !== conversationId) return;
-      setDraft("");
+      setDraft(emptyDraft());
       setStreaming(null);
       const next = remaining[index] ?? remaining[index - 1] ?? null;
       if (next) {
@@ -220,7 +221,7 @@ export function App() {
       await deleteThread(id);
       setTree(await getTree(conversationId));
       if (threadId !== null && subtree.has(threadId)) {
-        setDraft("");
+        setDraft(emptyDraft());
         setStreaming(null);
         setThreadId(parentId);
         setView(await getMessages(parentId));
@@ -233,7 +234,7 @@ export function App() {
   async function pickConversation(id: string) {
     if (sending || id === conversationId) return;
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     setStreaming(null);
     await openConversation(id);
   }
@@ -241,7 +242,7 @@ export function App() {
   async function selectThread(id: string) {
     if (sending || id === threadId) return;
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     setStreaming(null);
     try {
       setThreadId(id);
@@ -251,11 +252,11 @@ export function App() {
     }
   }
 
-  async function send(targetThreadId: string, content: string) {
+  async function send(targetThreadId: string, content: string, restore?: Draft) {
     setMenuOpen(false);
     setSending(true);
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     const info = modelInfo(model);
     setStreaming({
       text: "",
@@ -325,7 +326,7 @@ export function App() {
         } else if (event.event === "error") {
           failed = true;
           setError(event.data.error);
-          setDraft(content);
+          setDraft(restore ?? textDraft(content));
           setStreaming(null);
         }
       },
@@ -333,10 +334,10 @@ export function App() {
       if (conversationId) await refreshLists(conversationId);
       const fresh = await getMessages(targetThreadId);
       setView((current) => (current && current.thread.id === targetThreadId ? fresh : current));
-      if (failed) setDraft(content);
+      if (failed) setDraft(restore ?? textDraft(content));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send");
-      setDraft(content);
+      setDraft(restore ?? textDraft(content));
       try {
         const fresh = await getMessages(targetThreadId);
         setView((current) => (current && current.thread.id === targetThreadId ? fresh : current));
@@ -365,10 +366,10 @@ export function App() {
         return;
       }
       if (mode === "quote" && selection) {
-        setDraft(quoteText(selection));
+        setDraft(textDraft(quoteText(selection)));
         setPrefillKey((value) => value + 1);
       } else {
-        setDraft("");
+        setDraft(emptyDraft());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not fork");
@@ -432,13 +433,24 @@ export function App() {
           <button
             type="button"
             disabled={sending || conversations.length === 0}
-            aria-label={`Conversation: ${currentLabel}`}
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="btn-ghost glow-ring max-w-xs"
+            className="btn-ghost glow-ring shrink-0"
           >
-            <span className="truncate">{currentLabel}</span>
+            Chats
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+              className={`transition-transform ${menuOpen ? "rotate-180" : ""}`}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
           {menuOpen && (
             <ul
@@ -447,7 +459,7 @@ export function App() {
               className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-xl py-1 shadow-lg"
             >
               {conversations.map((conversation) => {
-                const label = conversation.goal_snippet || "New conversation";
+                const label = conversation.goal_snippet || UNTITLED_CHAT;
                 const selected = conversation.id === conversationId;
                 return (
                   <li
@@ -574,7 +586,9 @@ export function App() {
             prefillKey={prefillKey}
             onDraft={setDraft}
             onSend={() => {
-              if (threadId && draft.trim()) void send(threadId, draft.trim());
+              if (!threadId || isDraftEmpty(draft)) return;
+              const content = serializeDraft(draft).trim();
+              if (content) void send(threadId, content, draft);
             }}
             onFork={(messageId) => void forkFrom(messageId, "open")}
             onForkSelection={(messageId, text, mode) => void forkFrom(messageId, mode, text)}
@@ -603,8 +617,8 @@ export function App() {
             }
             mic={
               <MicButton
-                disabled={sending || !view}
-                onText={(spoken) => setDraft((current) => appendTranscript(current, spoken))}
+                disabled={sending || !view || formulaMic !== null}
+                onText={(parts) => setDraft((current) => appendDictation(current, parts))}
                 onError={setError}
                 onPhase={(phase) => {
                   setDictationPhase(phase);
@@ -613,6 +627,9 @@ export function App() {
               />
             }
             dictationPhase={dictationPhase}
+            formulaMic={formulaMic}
+            onFormulaMic={setFormulaMic}
+            onComposerError={setError}
             onContinue={() => {
               if (threadId && !sending) void send(threadId, "Continue");
             }}
