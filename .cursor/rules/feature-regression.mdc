@@ -15,8 +15,8 @@ Check the area you touched, not the whole app. Backend areas: run `uv run pytest
 
 Files: `frontend/src/App.tsx`, `frontend/src/api.ts`, conversation routes in `backend/app/main.py`, conversation helpers in `backend/app/db.py`.
 
-- The header control lists chats newest first. Choosing a row opens that chat.
-- Each row has Delete. Confirm with the goal snippet, or "New conversation". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
+- The header control is a fixed "Chats" button with a dropdown arrow; it does not show the open chat's name (the pinned goal does), so it never reads like a second New conversation button. It lists chats newest first, the open one in medium weight. Choosing a row opens that chat. A chat with no first message yet is listed as "Untitled".
+- Each row has Delete. Confirm with the goal snippet, or "Untitled". Deleting the open chat opens the next remaining chat; deleting a different chat leaves you where you are. The last delete shows the empty state.
 - `DELETE /api/conversations/{id}` returns 204, or 404. Threads and messages point at each other, so null `fork_message_id`, `parent_thread_id`, and `parent_id` before deleting messages, threads, then the conversation. The conversation's chunks_fts, chunks, and documents rows are deleted before the conversation row.
 - New conversation creates an empty center node titled "Center".
 

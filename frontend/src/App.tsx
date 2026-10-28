@@ -68,6 +68,9 @@ function toggleClass(on: boolean): string {
   }`;
 }
 
+/** A chat with no first message yet has no goal to name it by. */
+const UNTITLED_CHAT = "Untitled";
+
 export function App() {
   const { resolved, toggle } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -96,10 +99,6 @@ export function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => clampSidebarWidth(loadSidebarWidth()));
   const asideRef = useRef<HTMLElement>(null);
-
-  const currentLabel =
-    conversations.find((item) => item.id === conversationId)?.goal_snippet ||
-    (conversationId ? "New conversation" : "No conversations");
 
 
   async function openConversation(id: string, preferredThreadId?: string) {
@@ -177,7 +176,7 @@ export function App() {
     if (sending) return;
     const current = conversations.find((item) => item.id === id);
     if (!current) return;
-    const label = current.goal_snippet || "New conversation";
+    const label = current.goal_snippet || UNTITLED_CHAT;
     if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
     setError(null);
     try {
@@ -434,13 +433,24 @@ export function App() {
           <button
             type="button"
             disabled={sending || conversations.length === 0}
-            aria-label={`Conversation: ${currentLabel}`}
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="btn-ghost glow-ring max-w-xs"
+            className="btn-ghost glow-ring shrink-0"
           >
-            <span className="truncate">{currentLabel}</span>
+            Chats
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+              className={`transition-transform ${menuOpen ? "rotate-180" : ""}`}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
           {menuOpen && (
             <ul
@@ -449,7 +459,7 @@ export function App() {
               className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-xl py-1 shadow-lg"
             >
               {conversations.map((conversation) => {
-                const label = conversation.goal_snippet || "New conversation";
+                const label = conversation.goal_snippet || UNTITLED_CHAT;
                 const selected = conversation.id === conversationId;
                 return (
                   <li
