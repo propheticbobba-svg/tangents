@@ -354,6 +354,17 @@ html::before {
   letter-spacing: -0.01em;
   margin: 0.8em 0 0.3em;
 }
+/* Math: wide display equations scroll inside the message, like tables. */
+.markdown .katex {
+  font-size: 1.05em;
+}
+.markdown .katex-display {
+  margin: 0.75rem 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
 .markdown .markdown-table {
   margin: 0.75rem 0;
   max-width: 100%;
@@ -469,4 +480,65 @@ html::before {
   .mic-live {
     animation: none;
   }
+}
+
+/* ---------- Composer editor and formula boxes ---------- */
+
+.composer-editor p {
+  margin: 0;
+}
+.composer-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.formula-chip {
+  display: inline-block;
+  margin: 0 0.125rem;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  vertical-align: middle;
+  line-height: 1.2;
+  cursor: default;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.formula-chip:hover,
+.formula-chip.is-selected {
+  border-color: var(--accent);
+}
+.formula-chip.is-selected {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* A voice edit in progress. The formula itself stays fully visible. */
+.formula-chip.is-voice {
+  border-color: var(--accent);
+  animation: formula-voice 1.2s ease-in-out infinite;
+}
+@keyframes formula-voice {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .formula-chip.is-voice {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+}
+.formula-chip.has-error {
+  border-color: var(--danger);
+}
+.formula-chip .katex {
+  font-size: 1.05em;
+}
+.formula-preview .katex-display {
+  margin: 0.25rem 0;
 }

@@ -1,4 +1,5 @@
 import type { Conversation, DocumentInfo, Message, Thread, ThreadView, Tree, WebSource } from "./types";
+import type { SpokenPart } from "./draft";
 
 export type ChatEvent =
   | { event: "user_message"; data: Message }
@@ -77,6 +78,54 @@ export function transcribe(audio: Blob): Promise<{ text: string }> {
   const body = new FormData();
   body.append("audio", audio, "dictation.wav");
   return request("/api/transcribe", { method: "POST", body });
+}
+
+const MATH_TIMEOUT_MS = 25000;
+
+function isSpokenPart(value: unknown): value is SpokenPart {
+  if (typeof value !== "object" || value === null) return false;
+  const part = value as Record<string, unknown>;
+  if (part.type === "text") return typeof part.text === "string";
+  return part.type === "formula" && typeof part.latex === "string" && typeof part.spoken === "string";
+}
+
+/** Splits a transcript into text and formulas. Never rejects: any failure keeps the plain transcript. */
+export async function parseSpokenMath(text: string): Promise<SpokenPart[]> {
+  const plain: SpokenPart[] = [{ type: "text", text }];
+  try {
+    const { parts } = await request<{ parts: unknown }>("/api/dictation/math", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(MATH_TIMEOUT_MS),
+    });
+    if (!Array.isArray(parts) || parts.length === 0 || !parts.every(isSpokenPart)) return plain;
+    return parts;
+  } catch {
+    return plain;
+  }
+}
+
+/** Applies a spoken correction to a formula. Rejects with a message for the error line. */
+export async function editFormula(latex: string, spoken: string): Promise<string> {
+  let result: { latex?: unknown };
+  try {
+    result = await request("/api/dictation/math/edit", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ latex, spoken }),
+      signal: AbortSignal.timeout(MATH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // A server detail ("Set ANTHROPIC_API_KEY ...") is shown as is; a timeout or
+    // network failure gets the generic message.
+    if (err instanceof Error && err.name === "Error") throw err;
+    throw new Error("Could not update that formula");
+  }
+  if (typeof result.latex !== "string" || !result.latex.trim()) {
+    throw new Error("Could not update that formula");
+  }
+  return result.latex;
 }
 
 export function getMessages(threadId: string): Promise<ThreadView> {

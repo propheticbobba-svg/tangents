@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Breadcrumb } from "./Breadcrumb";
 import { Composer } from "./Composer";
+import type { Draft } from "./draft";
 import type { DictationPhase } from "./MicButton";
+import { outsideMath, selectionText } from "./mathText";
 import { MessageView, StreamingMessage } from "./Message";
 import { PinnedGoal } from "./PinnedGoal";
 import { SelectionPopover } from "./SelectionPopover";
 import { messageText, type StreamingTurn, type ThreadView } from "./types";
 
-function forkPreview(text: string): string {
+export function forkPreview(text: string): string {
   const prose = text.split("```")[0] ?? text;
-  return prose.replace(/[*_`>#]/g, "").replace(/\s+/g, " ").trim();
+  return outsideMath(prose, (part) => part.replace(/[*_`>#]/g, "")).replace(/\s+/g, " ").trim();
 }
 
 type Selection = {
@@ -36,6 +38,9 @@ export function ChatPane({
   controls,
   mic,
   dictationPhase,
+  formulaMic,
+  onFormulaMic,
+  onComposerError,
   onContinue,
 }: {
   view: ThreadView | null;
@@ -43,9 +48,9 @@ export function ChatPane({
   streaming: StreamingTurn | null;
   sending: boolean;
   error: string | null;
-  draft: string;
+  draft: Draft;
   prefillKey: number;
-  onDraft: (value: string) => void;
+  onDraft: (value: Draft) => void;
   onSend: () => void;
   onFork: (messageId: string) => void;
   onForkSelection: (messageId: string, text: string, mode: "quote" | "explain") => void;
@@ -54,6 +59,9 @@ export function ChatPane({
   controls: ReactNode;
   mic: ReactNode;
   dictationPhase: DictationPhase;
+  formulaMic: string | null;
+  onFormulaMic: (update: (current: string | null) => string | null) => void;
+  onComposerError: (message: string) => void;
   onContinue: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -73,8 +81,9 @@ export function ChatPane({
   function captureSelection() {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return;
-    const text = sel.toString().trim();
-    if (!text || sel.rangeCount === 0) return;
+    if (sel.rangeCount === 0) return;
+    const text = (selectionText(sel.getRangeAt(0)) ?? sel.toString()).trim();
+    if (!text) return;
     const node = sel.anchorNode;
     const element = node instanceof Element ? node : node?.parentElement;
     const message = element?.closest("[data-message-id]");
@@ -160,6 +169,9 @@ export function ChatPane({
         controls={controls}
         mic={mic}
         dictationPhase={dictationPhase}
+        formulaMic={formulaMic}
+        onFormulaMic={onFormulaMic}
+        onError={onComposerError}
         placeholder={sideNode ? "Continue this side node" : "Message the center node"}
       />
       {selection && !sending && (

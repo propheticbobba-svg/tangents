@@ -14,7 +14,7 @@ import {
   uploadDocument,
 } from "./api";
 import { ChatPane } from "./ChatPane";
-import { appendTranscript } from "./dictation";
+import { appendDictation, emptyDraft, isDraftEmpty, serializeDraft, textDraft, type Draft } from "./draft";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { MicButton, type DictationPhase } from "./MicButton";
 import { ResizeHandle } from "./ResizeHandle";
@@ -75,8 +75,9 @@ export function App() {
   const [tree, setTree] = useState<Tree | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [view, setView] = useState<ThreadView | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [dictationPhase, setDictationPhase] = useState<DictationPhase>("idle");
+  const [formulaMic, setFormulaMic] = useState<string | null>(null);
   const [prefillKey, setPrefillKey] = useState(0);
   const [streaming, setStreaming] = useState<StreamingTurn | null>(null);
   const [sending, setSending] = useState(false);
@@ -99,6 +100,7 @@ export function App() {
   const currentLabel =
     conversations.find((item) => item.id === conversationId)?.goal_snippet ||
     (conversationId ? "New conversation" : "No conversations");
+
 
   async function openConversation(id: string, preferredThreadId?: string) {
     const [nextTree, nextDocuments] = await Promise.all([getTree(id), listDocuments(id)]);
@@ -161,7 +163,7 @@ export function App() {
     if (sending) return;
     setMenuOpen(false);
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     try {
       const created = await createConversation();
       setConversations(await listConversations());
@@ -184,7 +186,7 @@ export function App() {
       const remaining = conversations.filter((item) => item.id !== id);
       setConversations(remaining);
       if (id !== conversationId) return;
-      setDraft("");
+      setDraft(emptyDraft());
       setStreaming(null);
       const next = remaining[index] ?? remaining[index - 1] ?? null;
       if (next) {
@@ -220,7 +222,7 @@ export function App() {
       await deleteThread(id);
       setTree(await getTree(conversationId));
       if (threadId !== null && subtree.has(threadId)) {
-        setDraft("");
+        setDraft(emptyDraft());
         setStreaming(null);
         setThreadId(parentId);
         setView(await getMessages(parentId));
@@ -233,7 +235,7 @@ export function App() {
   async function pickConversation(id: string) {
     if (sending || id === conversationId) return;
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     setStreaming(null);
     await openConversation(id);
   }
@@ -241,7 +243,7 @@ export function App() {
   async function selectThread(id: string) {
     if (sending || id === threadId) return;
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     setStreaming(null);
     try {
       setThreadId(id);
@@ -251,11 +253,11 @@ export function App() {
     }
   }
 
-  async function send(targetThreadId: string, content: string) {
+  async function send(targetThreadId: string, content: string, restore?: Draft) {
     setMenuOpen(false);
     setSending(true);
     setError(null);
-    setDraft("");
+    setDraft(emptyDraft());
     const info = modelInfo(model);
     setStreaming({
       text: "",
@@ -325,7 +327,7 @@ export function App() {
         } else if (event.event === "error") {
           failed = true;
           setError(event.data.error);
-          setDraft(content);
+          setDraft(restore ?? textDraft(content));
           setStreaming(null);
         }
       },
@@ -333,10 +335,10 @@ export function App() {
       if (conversationId) await refreshLists(conversationId);
       const fresh = await getMessages(targetThreadId);
       setView((current) => (current && current.thread.id === targetThreadId ? fresh : current));
-      if (failed) setDraft(content);
+      if (failed) setDraft(restore ?? textDraft(content));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send");
-      setDraft(content);
+      setDraft(restore ?? textDraft(content));
       try {
         const fresh = await getMessages(targetThreadId);
         setView((current) => (current && current.thread.id === targetThreadId ? fresh : current));
@@ -365,10 +367,10 @@ export function App() {
         return;
       }
       if (mode === "quote" && selection) {
-        setDraft(quoteText(selection));
+        setDraft(textDraft(quoteText(selection)));
         setPrefillKey((value) => value + 1);
       } else {
-        setDraft("");
+        setDraft(emptyDraft());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not fork");
@@ -574,7 +576,9 @@ export function App() {
             prefillKey={prefillKey}
             onDraft={setDraft}
             onSend={() => {
-              if (threadId && draft.trim()) void send(threadId, draft.trim());
+              if (!threadId || isDraftEmpty(draft)) return;
+              const content = serializeDraft(draft).trim();
+              if (content) void send(threadId, content, draft);
             }}
             onFork={(messageId) => void forkFrom(messageId, "open")}
             onForkSelection={(messageId, text, mode) => void forkFrom(messageId, mode, text)}
@@ -603,8 +607,8 @@ export function App() {
             }
             mic={
               <MicButton
-                disabled={sending || !view}
-                onText={(spoken) => setDraft((current) => appendTranscript(current, spoken))}
+                disabled={sending || !view || formulaMic !== null}
+                onText={(parts) => setDraft((current) => appendDictation(current, parts))}
                 onError={setError}
                 onPhase={(phase) => {
                   setDictationPhase(phase);
@@ -613,6 +617,9 @@ export function App() {
               />
             }
             dictationPhase={dictationPhase}
+            formulaMic={formulaMic}
+            onFormulaMic={setFormulaMic}
+            onComposerError={setError}
             onContinue={() => {
               if (threadId && !sending) void send(threadId, "Continue");
             }}
