@@ -249,11 +249,12 @@ def fake_client(monkeypatch, messages):
     return client
 
 
-def test_call_tool_forces_the_tool_on_haiku(monkeypatch):
+def test_call_tool_forces_the_tool_on_haiku_without_thinking(monkeypatch):
     messages = _Messages([_Block({"type": "tool_use", "name": "emit_formulas", "input": {"formulas": []}})])
     client = fake_client(monkeypatch, messages)
     assert mathspeech._call_tool("rules", "Transcript:\nx", EMIT_FORMULAS) == {"formulas": []}
-    assert messages.kwargs["model"] == MATH_MODEL == "claude-haiku-4-5"
+    assert messages.kwargs["model"] == MATH_MODEL == "claude-haiku-5-5"
+    assert messages.kwargs["thinking"] == {"type": "disabled"}
     assert messages.kwargs["tool_choice"] == {"type": "tool", "name": "emit_formulas"}
     assert messages.kwargs["tools"] == [EMIT_FORMULAS]
     assert messages.kwargs["system"] == "rules"
