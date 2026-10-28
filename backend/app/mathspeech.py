@@ -1,8 +1,9 @@
 """Spoken math. A dictated transcript that looks like math is split into text and
 LaTeX formulas, and a formula can be rewritten from a spoken correction.
 
-Both calls are side calls to Haiku with one forced tool. Nothing here is stored and
-no tool rows enter the tree. The model only names the math spans and their LaTeX;
+Both calls are side calls to Claude Haiku 5.5 with one forced tool and thinking
+off: forced tool use does not allow thinking, and a dictation should come back
+fast. Nothing here is stored and no tool rows enter the tree. The model only names the math spans and their LaTeX;
 the text around them is cut from the original transcript, so ordinary words are
 never rewritten. Any failure in the split returns the plain transcript.
 """
@@ -19,7 +20,7 @@ from app.llm import LLMError
 
 logger = logging.getLogger("tangents")
 
-MATH_MODEL = "claude-haiku-4-5"
+MATH_MODEL = "claude-haiku-5-5"
 MATH_MAX_TOKENS = 1024
 MATH_TIMEOUT_SECONDS = 20
 LATEX_MAX_CHARS = 1000
@@ -215,6 +216,8 @@ def _call_tool(instruction: str, content: str, tool: dict[str, Any]) -> dict[str
             .messages.create(
                 model=MATH_MODEL,
                 max_tokens=MATH_MAX_TOKENS,
+                # Haiku 5.5 thinks by default; disabled is accepted at its default medium effort.
+                thinking={"type": "disabled"},
                 system=instruction,
                 tools=[tool],
                 tool_choice={"type": "tool", "name": tool["name"]},
