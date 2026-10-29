@@ -70,7 +70,7 @@ A side node's first message has `parent_id` set to the assistant message it was 
 
 ## Learning map
 
-Each node keeps a short sketch of the kind of work in it. After a successful reply that contains text, Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model) rewrites that node's sketch from the latest user message and reply. A failed, empty, or cut-off sketch call leaves the previous sketch and still saves the turn.
+Each node keeps a short sketch of the kind of work in it. After a successful reply that contains text, Claude Haiku 5.5 (`claude-haiku-5-5`, with thinking off) rewrites that node's sketch from the latest user message and reply. A failed, empty, or cut-off sketch call leaves the previous sketch and still saves the turn.
 
 The next turn in that conversation prepends a map of every node (title, sketch, and `Branched from:`) to the API copy of the new user message. Stored messages stay the parent-id path only. The map header tells the model to answer the last text block of that turn, which is the user's new message. Fork quotes stay on the tree hover. They are not copied into the map.
 
@@ -115,7 +115,7 @@ Within a thread, messages form a line. A new message's `parent_id` is the thread
 
 The pinned goal defaults to the text of the center node's first user message, and only while `goal` is still NULL. Editing it does not change the transcript. Compaction summaries are instructed to restate the current goal.
 
-After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 4.5 (`claude-haiku-4-5`, not the Haiku 5.5 menu model), taken from the first 400 characters of that node's first user message and the first 400 characters of the reply. The name has to agree with the reply, so it cannot state a fact the reply just contradicted. If that call fails or comes back empty, the title is the first 40 characters of the user message. Later messages do not rename the node.
+After a node's first reply succeeds, its title is a 2–6 word topic name from Claude Haiku 5.5 (`claude-haiku-5-5`, with thinking off), taken from the first 400 characters of that node's first user message and the first 400 characters of the reply. The name has to agree with the reply, so it cannot state a fact the reply just contradicted. If that call fails or comes back empty, the title is the first 40 characters of the user message. Later messages do not rename the node.
 
 Stored messages are not edited or deleted, except the user message of a turn that fails before an assistant reply is saved.
 
