@@ -175,12 +175,12 @@ def test_suggest_title_sends_a_short_haiku_prompt(monkeypatch):
     assert suggest_title(opening) == "Onboarding email rewrite"
     prompt = messages.kwargs["messages"][0]["content"]
     excerpt = " ".join(opening.split())[:TITLE_INPUT_CHARS].rstrip()
-    assert messages.kwargs["model"] == TITLE_MODEL
+    assert messages.kwargs["model"] == TITLE_MODEL == "claude-haiku-5-5"
     assert messages.kwargs["max_tokens"] == TITLE_MAX_TOKENS
     assert "stop_sequences" not in messages.kwargs
     assert "system" not in messages.kwargs
     assert "tools" not in messages.kwargs
-    assert "thinking" not in messages.kwargs
+    assert messages.kwargs["thinking"] == {"type": "disabled"}
     assert "output_config" not in messages.kwargs
     assert prompt == f"{TITLE_INSTRUCTION}\n\n{excerpt}"
     assert len(excerpt) <= TITLE_INPUT_CHARS
@@ -263,12 +263,12 @@ def test_suggest_sketch_sends_a_short_haiku_prompt(monkeypatch):
     )
     prompt = messages.kwargs["messages"][0]["content"]
     user_excerpt = " ".join(user.split())[:TITLE_INPUT_CHARS].rstrip()
-    assert messages.kwargs["model"] == TITLE_MODEL
+    assert messages.kwargs["model"] == TITLE_MODEL == "claude-haiku-5-5"
     assert messages.kwargs["max_tokens"] == SKETCH_MAX_TOKENS
     assert "stop_sequences" not in messages.kwargs
     assert "system" not in messages.kwargs
     assert "tools" not in messages.kwargs
-    assert "thinking" not in messages.kwargs
+    assert messages.kwargs["thinking"] == {"type": "disabled"}
     assert "output_config" not in messages.kwargs
     assert prompt.startswith(f"{SKETCH_INSTRUCTION}\n\n")
     assert "Node title: Center" in prompt

@@ -67,7 +67,7 @@ CHARTS_INSTRUCTION = (
     "mesh3d traces. Write at least one sentence before the chart. Do not mention Plotly or JSON "
     "to the user. Do not add a chart when it adds nothing."
 )
-TITLE_MODEL = "claude-haiku-4-5"
+TITLE_MODEL = "claude-haiku-5-5"
 TITLE_INPUT_CHARS = 400
 TITLE_MAX_CHARS = 60
 TITLE_MAX_TOKENS = 32
@@ -555,6 +555,8 @@ def _fetch_title(user_text: str, reply_text: str = "") -> str:
         response = _client().messages.create(
             model=TITLE_MODEL,
             max_tokens=TITLE_MAX_TOKENS,
+            # Haiku 5.5 thinks by default, and thinking would spend the small token cap.
+            thinking={"type": "disabled"},
             messages=[{"role": "user", "content": prompt}],
         )
     except LLMError:
@@ -625,6 +627,8 @@ def _fetch_sketch(
         response = _client().messages.create(
             model=TITLE_MODEL,
             max_tokens=SKETCH_MAX_TOKENS,
+            # Haiku 5.5 thinks by default, and thinking would spend the small token cap.
+            thinking={"type": "disabled"},
             messages=[{"role": "user", "content": prompt}],
         )
     except LLMError:
