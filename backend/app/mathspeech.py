@@ -40,8 +40,9 @@ MATH_INSTRUCTION = (
     "Write the formula the speaker meant, not a result: do not simplify, solve, or evaluate. "
     'Use digits for numbers and standard notation. "x square" means x^2. When grouping is '
     "ambiguous, choose what the speaker most likely meant; a trailing \"divided by\" or "
-    '"over" after an expression of several terms divides the whole expression. If there is '
-    "no math, call emit_formulas with an empty list."
+    '"over" after an expression of several terms divides the whole expression. "d" plus a '
+    'variable over "d" plus a variable is a derivative: "dL over dA" means \\frac{dL}{dA}. '
+    "If there is no math, call emit_formulas with an empty list."
 )
 
 EDIT_INSTRUCTION = (
@@ -119,6 +120,9 @@ _MATH_PATTERNS = [
     # "x over 2", "3 over n", "five over six"
     re.compile(rf"(?:\b\d+|\b[a-z]|\b(?:{_NUMBER_WORDS}))\s+over\b", re.IGNORECASE),
     re.compile(rf"\bover\s+(?:\d+|[a-z]\b|(?:{_NUMBER_WORDS})\b)", re.IGNORECASE),
+    # "dL over dA", "dy over dx": d plus one letter next to "over" is Leibniz notation.
+    # "do" and "dr" are excluded ("a do over", "over Dr. Lee").
+    re.compile(r"\bd(?![or]\b)[a-z]\s+over\b|\bover\s+d(?![or]\b)[a-z]\b", re.IGNORECASE),
     # "e to the i pi", "2 to the 10th"
     re.compile(r"(?:\b\d+|\b[a-z])\s+to the\b", re.IGNORECASE),
 ]
