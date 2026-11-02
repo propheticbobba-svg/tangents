@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   createConversation,
   createThread,
@@ -63,7 +63,7 @@ function subtreeIds(threads: Thread[], rootId: string): Set<string> {
 }
 
 function toggleClass(on: boolean): string {
-  return `btn-ghost glow-ring shrink-0${
+  return `btn-ghost glow-ring shrink-0 max-md:min-h-11${
     on ? " !border-accent !bg-accent !text-[var(--on-accent)] font-semibold" : ""
   }`;
 }
@@ -420,7 +420,7 @@ export function App() {
   }
 
   function previewSidebarWidth(width: number) {
-    if (asideRef.current) asideRef.current.style.width = `${width}px`;
+    asideRef.current?.style.setProperty("--sidebar-w", `${width}px`);
   }
 
   function commitSidebarWidth(width: number) {
@@ -437,19 +437,19 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col text-ink">
-      <header className="relative z-20 flex h-16 shrink-0 items-center gap-2.5 border-b border-line bg-panel px-5">
+      <header className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 md:h-16 md:flex-nowrap md:gap-2.5 md:px-5 md:py-0">
         <span className="mr-2 flex shrink-0 items-center gap-2 font-sans text-lg font-bold tracking-tight">
           <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-accent" />
           Tangents
         </span>
-        <div className="relative min-w-0" ref={menuRef}>
+        <div className="min-w-0 md:relative" ref={menuRef}>
           <button
             type="button"
             disabled={sending || conversations.length === 0}
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="btn-ghost glow-ring shrink-0"
+            className="btn-ghost glow-ring shrink-0 max-md:min-h-11"
           >
             Chats
             <svg
@@ -469,7 +469,7 @@ export function App() {
             <ul
               role="listbox"
               aria-label="Conversations"
-              className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-2xl p-1.5 shadow-lg"
+              className="glass fade-in absolute inset-x-3 top-full z-20 mt-2 max-h-72 overflow-y-auto md:inset-x-auto md:left-0 md:w-80 rounded-2xl p-1.5 shadow-lg"
             >
               {conversations.map((conversation) => {
                 const label = conversation.goal_snippet || UNTITLED_CHAT;
@@ -487,7 +487,7 @@ export function App() {
                         setMenuOpen(false);
                         void pickConversation(conversation.id);
                       }}
-                      className={`glow-ring min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-left text-sm ${selected ? "font-semibold text-ink" : "text-muted hover:text-ink"}`}
+                      className={`glow-ring min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-left max-md:min-h-11 text-sm ${selected ? "font-semibold text-ink" : "text-muted hover:text-ink"}`}
                     >
                       {label}
                     </button>
@@ -496,7 +496,7 @@ export function App() {
                       aria-label={`Delete ${label}`}
                       disabled={sending}
                       onClick={() => void removeConversation(conversation.id)}
-                      className="glow-ring shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                      className="glow-ring shrink-0 rounded-full px-2.5 py-1 text-xs max-md:min-h-11 font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                     >
                       Delete
                     </button>
@@ -510,7 +510,7 @@ export function App() {
           type="button"
           disabled={sending}
           onClick={() => void startConversation()}
-          className="btn-ghost glow-ring shrink-0 whitespace-nowrap"
+          className="btn-ghost glow-ring shrink-0 whitespace-nowrap max-md:min-h-11"
         >
           New conversation
         </button>
@@ -566,7 +566,7 @@ export function App() {
         <button
           type="button"
           onClick={toggle}
-          className="btn-ghost glow-ring shrink-0 whitespace-nowrap"
+          className="btn-ghost glow-ring shrink-0 whitespace-nowrap max-md:min-h-11"
         >
           <svg
             width="14"
@@ -613,7 +613,7 @@ export function App() {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-visible">
           <ChatPane
             view={view}
             goal={tree?.goal ?? null}
@@ -674,8 +674,8 @@ export function App() {
           />
           <aside
             ref={asideRef}
-            style={{ width: sidebarWidth }}
-            className="relative flex shrink-0 flex-col border-l border-line bg-panel"
+            style={{ "--sidebar-w": `${sidebarWidth}px` } as CSSProperties}
+            className="relative flex h-[75dvh] w-full shrink-0 flex-col border-t border-line bg-panel md:h-auto md:w-[var(--sidebar-w)] md:border-l md:border-t-0"
           >
             <ResizeHandle width={sidebarWidth} onPreview={previewSidebarWidth} onCommit={commitSidebarWidth} />
             <DocumentsPanel

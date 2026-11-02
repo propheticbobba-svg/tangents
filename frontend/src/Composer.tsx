@@ -154,7 +154,7 @@ export function Composer({
 
   return (
     <form
-      className="px-4 pb-4 pt-2"
+      className="px-3 pb-4 pt-2 md:px-4"
       onSubmit={(event) => {
         event.preventDefault();
         submitRef.current();
@@ -170,7 +170,7 @@ export function Composer({
       <FormulaContext.Provider value={env}>
         <EditorContent editor={editor} />
       </FormulaContext.Provider>
-      <div className="mt-2 flex items-center justify-between gap-3">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span
           className={`label ${
             dictationPhase === "listening" ? "animate-pulse motion-reduce:animate-none" : ""
@@ -182,7 +182,7 @@ export function Composer({
               ? "Transcribing…"
               : "Enter to send · Shift+Enter for a new line"}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {controls}
           {mic}
           <button

@@ -104,7 +104,7 @@ export function MessageView({
     <article
       data-message-id={message.id}
       data-role={message.role}
-      className={`fade-in ${user ? "ml-12" : "mr-6"}`}
+      className={`fade-in ${user ? "ml-6 md:ml-12" : "mr-0 md:mr-6"}`}
     >
       {summaries.map((summary, index) => (
         <CompactionDivider key={`${message.id}-compact-${index}`} summary={summary} />
@@ -164,7 +164,7 @@ export function MessageView({
             type="button"
             disabled={forkDisabled}
             onClick={() => onFork(message.id)}
-            className="pointer-events-auto sticky bottom-3 z-10 mt-3 ml-auto block min-h-9 w-fit glass glow-ring rounded-full px-4 text-[13px] font-semibold text-muted transition-colors hover:text-ink disabled:opacity-40"
+            className="pointer-events-auto sticky bottom-3 z-10 mt-3 ml-auto block min-h-11 w-fit md:min-h-9 glass glow-ring rounded-full px-4 text-[13px] font-semibold text-muted transition-colors hover:text-ink disabled:opacity-40"
           >
             Fork
           </button>
@@ -190,7 +190,7 @@ export function StreamingMessage({
   thinkingEndedAt: number | null;
 }) {
   return (
-    <article className="fade-in mr-6" data-role="assistant">
+    <article className="fade-in mr-0 md:mr-6" data-role="assistant">
       {summaries.map((summary, index) => (
         <CompactionDivider key={`stream-compact-${index}`} summary={summary} />
       ))}
