@@ -72,9 +72,9 @@ export function PinnedGoal({
               void save();
             }
           }}
-          className="mt-1 w-full resize-none bg-transparent text-sm outline-none"
+          className="mt-1 w-full resize-none rounded-xl border border-line bg-transparent px-3 py-2 text-[15px] leading-6 outline-none focus:border-accent"
         />
-        {error && <p className="text-danger mt-1 text-xs">{error}</p>}
+        {error && <p className="text-danger mt-1 text-[13px]">{error}</p>}
        </div>
       </div>
     );
@@ -88,7 +88,7 @@ export function PinnedGoal({
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className="font-mono text-[11px] text-muted transition-colors hover:text-ink"
+            className="btn-ghost glow-ring min-h-8 px-3 text-xs"
           >
             {expanded ? "Collapse" : "Expand"}
           </button>
@@ -96,7 +96,7 @@ export function PinnedGoal({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className={`mt-1 w-full text-left text-sm ${
+          className={`mt-1 w-full text-left text-[15px] leading-6 ${
             expanded ? "block max-h-48 overflow-y-auto whitespace-pre-wrap" : "line-clamp-2"
           }`}
         >

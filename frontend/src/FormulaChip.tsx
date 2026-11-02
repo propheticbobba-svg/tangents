@@ -124,7 +124,7 @@ export function LatexEditor({
       ref={ref}
       role="dialog"
       aria-label="Edit formula"
-      className="glass fade-in fixed z-40 flex flex-col gap-2 rounded-2xl p-3 shadow-lg"
+      className="glass fade-in fixed z-40 flex flex-col gap-2 rounded-3xl p-4 shadow-lg"
       style={{ ...style, width: POPOVER_WIDTH }}
     >
       <label className="label" htmlFor="formula-latex">
@@ -146,20 +146,20 @@ export function LatexEditor({
             onCancel();
           }
         }}
-        className="w-full resize-none rounded-lg border border-line bg-transparent px-2 py-1 font-mono text-xs outline-none"
+        className="w-full resize-none rounded-xl border border-line bg-transparent px-3 py-2 font-mono text-[13px] outline-none focus:border-accent"
       />
       <div className="formula-preview min-h-10 overflow-x-auto" aria-live="polite">
         {preview.error ? (
-          <p className="text-danger font-mono text-[11px]">{preview.error}</p>
+          <p className="text-danger font-mono text-xs">{preview.error}</p>
         ) : (
           <div dangerouslySetInnerHTML={{ __html: preview.html }} />
         )}
       </div>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="btn-ghost px-3 py-1 text-xs">
+        <button type="button" onClick={onCancel} className="btn-ghost glow-ring min-h-9 px-4 text-[13px]">
           Cancel
         </button>
-        <button type="button" onClick={save} className="btn-primary px-3 py-1 text-xs">
+        <button type="button" onClick={save} className="btn-primary glow-ring min-h-9 px-4 text-[13px]">
           Save
         </button>
       </div>
@@ -267,26 +267,26 @@ export function FormulaChip({
                 <button
                   type="button"
                   onClick={voice.onToggle}
-                  className="mic-live rounded-full px-3 py-1 text-xs"
+                  className="mic-live min-h-9 rounded-full px-4 text-[13px] font-semibold"
                 >
                   Stop
                 </button>
                 <button
                   type="button"
                   onClick={voice.onCancel}
-                  className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+                  className="btn-ghost glow-ring min-h-9 border-transparent px-3.5 text-[13px] font-semibold"
                 >
                   Cancel
                 </button>
               </>
             ) : voice.phase === "transcribing" ? (
-              <span className="label px-3 py-1">Updating…</span>
+              <span className="label px-3 py-2">Updating…</span>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+                  className="btn-ghost glow-ring min-h-9 border-transparent px-3.5 text-[13px] font-semibold"
                 >
                   Edit with text
                 </button>
@@ -294,14 +294,14 @@ export function FormulaChip({
                   type="button"
                   disabled={voice.disabled}
                   onClick={voice.onToggle}
-                  className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+                  className="btn-ghost glow-ring min-h-9 border-transparent px-3.5 text-[13px] font-semibold"
                 >
                   Edit with voice
                 </button>
                 <button
                   type="button"
                   onClick={onUndo}
-                  className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+                  className="btn-ghost glow-ring min-h-9 border-transparent px-3.5 text-[13px] font-semibold"
                 >
                   Undo math
                 </button>

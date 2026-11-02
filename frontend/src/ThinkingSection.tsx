@@ -39,21 +39,21 @@ export function ThinkingSection({
       : "Thinking";
 
   return (
-    <div className="glass fade-in mb-2 rounded-lg px-3 py-2 text-xs text-muted">
+    <div className="glass fade-in mb-3 rounded-2xl px-4 py-2.5 text-[13px] text-muted">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="label flex select-none items-center gap-2 text-left tabular-nums hover:text-ink"
+        className="label glow-ring flex min-h-7 select-none items-center gap-2 rounded-full text-left text-[13px] tabular-nums hover:text-ink"
       >
         {ticking && (
-          <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink" />
+          <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
         )}
         <span className={ticking ? "shimmer" : undefined}>{label}</span>
       </button>
       {open && text && (
         <div className="mt-2 border-t border-line pt-2 text-muted">
-          <Markdown text={text} streaming={live} />
+          <Markdown text={text} streaming={live} compact />
         </div>
       )}
     </div>

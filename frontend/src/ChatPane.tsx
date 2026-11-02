@@ -102,7 +102,7 @@ export function ChatPane({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <PinnedGoal goal={goal} onSave={onSaveGoal} />
-      <div className="border-b border-line px-4 py-2">
+      <div className="border-b border-line px-4 py-2.5">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           {view && (
             <Breadcrumb
@@ -115,21 +115,21 @@ export function ChatPane({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto" onMouseUp={captureSelection}>
-       <div className="mx-auto w-full max-w-3xl px-6 py-8">
+       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-8">
         {view?.forked_from && (
-          <blockquote className="mb-8 border-l border-line pl-4 text-sm text-muted">
+          <blockquote className="mb-10 rounded-2xl border-l-2 border-accent bg-user px-4 py-3 text-sm text-muted">
             <div className="label">Forked from</div>
             <p className="mt-1 line-clamp-3">{forkPreview(messageText(view.forked_from.content))}</p>
           </blockquote>
         )}
         {view && view.messages.length === 0 && !streaming && (
-          <p className="text-sm text-muted">
+          <p className="text-[15px] leading-7 text-muted">
             {sideNode
               ? "This side node inherits the path up to the fork, and nothing written here is added to the parent thread."
               : "This is the center node. The main thread stays here."}
           </p>
         )}
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-10">
           {view?.messages.map((message, index) => (
             <MessageView
               key={message.id}
