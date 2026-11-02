@@ -70,7 +70,7 @@ export function themedLayout(spec: ChartSpec, colors: ChartColors): Layout {
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     font: {
-      family: '"Geist", ui-sans-serif, system-ui, sans-serif',
+      family: '"Nunito", ui-sans-serif, system-ui, sans-serif',
       ...(isObject(layout.font) ? layout.font : {}),
       color: colors.ink,
     },

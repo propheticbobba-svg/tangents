@@ -20,12 +20,12 @@ const NODE_H = 72;
 const GAP_X = 36;
 const GAP_Y = 64;
 // Keep these in sync with ThreadNode: px-3 padding, a 1px border, text-sm font-medium title,
-// and the .label kind line (Geist Mono, 0.65625rem = 10.5px, letter-spacing 0.14em).
-// The extra 6px keeps subpixel rounding from clipping the last letter.
-const CARD_CHROME = 12 * 2 + 2 + 6;
-const TITLE_FONT = '500 14px "Geist", ui-sans-serif, system-ui, sans-serif';
-const KIND_FONT = '400 10.5px "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
-const KIND_TRACKING = 10.5 * 0.14;
+// and the .label kind line (Nunito, 0.75rem = 12px, weight 600, normal case, no tracking).
+// The extra 8px keeps subpixel rounding from clipping the last letter.
+const CARD_CHROME = 12 * 2 + 2 + 8;
+const TITLE_FONT = '500 14px "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif';
+const KIND_FONT = '600 12px "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif';
+const KIND_TRACKING = 0;
 
 let measureCanvas: HTMLCanvasElement | null = null;
 
@@ -42,8 +42,8 @@ function labelWidth(text: string, font: string, trackingPx = 0): number {
 
 function cardWidth(title: string, kind: string): number {
   const titleWidth = labelWidth(title, TITLE_FONT);
-  // The kind line is the uppercase .label style.
-  const kindWidth = labelWidth(kind.toUpperCase(), KIND_FONT, KIND_TRACKING);
+  // The kind line is the soft .label caption.
+  const kindWidth = labelWidth(kind, KIND_FONT, KIND_TRACKING);
   return Math.ceil(Math.max(titleWidth, kindWidth) + CARD_CHROME);
 }
 
@@ -176,7 +176,7 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
   return (
     <div
       title={hover || undefined}
-      className={`glass group relative w-full rounded-xl px-3 py-2 transition-[border-color,box-shadow] ${
+      className={`glass group relative w-full rounded-2xl px-3 py-2 transition-[border-color,box-shadow] ${
         data.active ? "glow-ring is-active !border-accent/80" : "hover:!border-muted/60"
       }`}
     >
@@ -185,7 +185,7 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
         <button
           type="button"
           aria-label={`Delete ${data.title}`}
-          className="nodrag nopan absolute -top-2.5 right-2 hidden rounded-full border border-line bg-paper px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-muted transition-colors hover:border-danger/50 hover:text-danger group-hover:block"
+          className="nodrag nopan absolute -top-2.5 right-2 hidden rounded-full border border-line bg-paper px-2 py-0.5 text-xs font-semibold leading-none text-muted transition-colors hover:border-danger/50 hover:text-danger group-hover:block"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
