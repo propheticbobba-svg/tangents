@@ -1,29 +1,32 @@
 /*
- * Design foundation: dark-first, monochrome, hairline borders, glass panels.
+ * Design foundation: warm, calm and soft. Cream paper (light) or cozy charcoal
+ * (dark), warm brown/off-white ink, a gentle terracotta accent, generous radii,
+ * soft shadows instead of glows, and Nunito for all text (mono only for code).
  * Shared classes (use these instead of re-inventing them per component):
  *
- *   .glass        translucent panel bg + backdrop blur + hairline border
+ *   .glass        mostly solid soft panel: --panel bg, hairline border, soft shadow
  *   .pill         fully rounded shape, hairline border, comfortable padding
- *   .btn-primary  filled pill button: white-on-black in dark, black-on-white in light
- *   .btn-ghost    transparent pill button with hairline border; brightens on hover
- *   .label        small mono uppercase muted caption, wide tracking
- *   .glow-ring    soft --glow ring on :focus-visible and on .is-active
+ *   .btn-primary  filled rounded button in the warm accent (--accent) with --on-accent text
+ *   .btn-ghost    transparent rounded button with a soft border; warms on hover
+ *   .label        soft caption: sans, normal case, 12px, muted
+ *   .glow-ring    accent focus ring on :focus-visible, softer accent ring on .is-active
  *   .text-danger  error / destructive text color (--danger)
  *   .fade-in      short opacity + translate entrance
- *   .shimmer      animated gradient for loading text or skeleton blocks
+ *   .shimmer      gentle moving gradient for loading text or skeleton blocks
  *
- * Ambient background: body::before (drifting glows) and body::after (grain and
- * stars). Both are fixed, pointer-events:none and sit behind #root.
- * Animations are disabled under prefers-reduced-motion.
+ * There are no ambient layers (no stars, grain or drifting glow); the body only
+ * has a very subtle static warm tint. Code highlighting colors are the --hl-*
+ * tokens below, so code blocks follow the theme. Animations are gentle and are
+ * disabled under prefers-reduced-motion.
  */
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-serif: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Nunito", ui-rounded, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Nunito", ui-rounded, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --color-paper: var(--paper);
   --color-ink: var(--ink);
   --color-line: var(--line);
@@ -36,36 +39,52 @@
 }
 
 :root {
-  --paper: #fafafa;
-  --ink: #0a0a0a;
-  --line: rgba(0, 0, 0, 0.1);
-  --panel: rgba(255, 255, 255, 0.72);
-  --muted: #5c5c5c;
-  --accent: #0a0a0a;
-  --user: rgba(0, 0, 0, 0.045);
-  --glow: rgba(80, 110, 200, 0.12);
-  --danger: #b91c1c;
-  --mic-idle: #e8e8e8;
-  --mic-live: #0a0a0a;
-  --grain-opacity: 0.025;
-  --stars-opacity: 0;
+  --paper: #faf6f0;
+  --ink: #3b2f27;
+  --line: rgba(92, 64, 40, 0.16);
+  --panel: #fffcf7;
+  --muted: #6b5f56;
+  --accent: #a94f33;
+  --on-accent: #fffaf4;
+  --user: rgba(214, 150, 96, 0.14);
+  --glow: rgba(169, 79, 51, 0.16);
+  --danger: #b0262c;
+  --shadow: 0 1px 2px rgba(92, 64, 40, 0.06), 0 4px 16px rgba(92, 64, 40, 0.08);
+  --mic-idle: #efe4d5;
+  --mic-live: #a94f33;
+  --code-bg: #f3ebe0;
+  --code-ink: #3b2f27;
+  --hl-keyword: #a2402a;
+  --hl-string: #4a6a38;
+  --hl-number: #865500;
+  --hl-comment: #6e6258;
+  --hl-title: #7a4478;
+  --hl-attr: #2f6468;
   color-scheme: light;
 }
 
 .dark {
-  --paper: #050505;
-  --ink: #ededed;
-  --line: rgba(255, 255, 255, 0.1);
-  --panel: rgba(18, 18, 18, 0.72);
-  --muted: #8f8f8f;
-  --accent: #f5f5f5;
-  --user: rgba(255, 255, 255, 0.06);
-  --glow: rgba(140, 170, 255, 0.18);
-  --danger: #f87171;
-  --mic-idle: #1a1a1a;
-  --mic-live: #f5f5f5;
-  --grain-opacity: 0.04;
-  --stars-opacity: 0.55;
+  --paper: #1f1b18;
+  --ink: #efe6dc;
+  --line: rgba(255, 232, 205, 0.14);
+  --panel: #2a2521;
+  --muted: #ab9f93;
+  --accent: #e39a78;
+  --on-accent: #2a1a12;
+  --user: rgba(227, 154, 120, 0.12);
+  --glow: rgba(227, 154, 120, 0.2);
+  --danger: #f58f86;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 16px rgba(0, 0, 0, 0.28);
+  --mic-idle: #3a332d;
+  --mic-live: #e39a78;
+  --code-bg: #171311;
+  --code-ink: #efe6dc;
+  --hl-keyword: #f0a07c;
+  --hl-string: #a9c98a;
+  --hl-number: #e6c07b;
+  --hl-comment: #a09488;
+  --hl-title: #dbb4e0;
+  --hl-attr: #8fc7ca;
   color-scheme: dark;
 }
 
@@ -77,9 +96,14 @@ body,
 
 body {
   margin: 0;
-  background: var(--paper);
+  background-color: var(--paper);
+  /* A very subtle static warm tint; no animation. */
+  background-image: radial-gradient(60% 50% at 15% 0%, var(--user), transparent 70%);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -89,78 +113,13 @@ textarea {
   font: inherit;
 }
 
-/* ---------- Ambient background ---------- */
-
-body::before,
-body::after {
-  content: "";
-  position: fixed;
-  pointer-events: none;
-  z-index: 0;
-}
-
-body::before {
-  inset: -20%;
-  background:
-    radial-gradient(40% 35% at 25% 20%, var(--glow), transparent 70%),
-    radial-gradient(35% 30% at 78% 75%, var(--glow), transparent 70%);
-  animation: ambient-drift 40s ease-in-out infinite alternate;
-}
-
-body::after {
-  inset: 0;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-/* Stars (dark theme only): body already uses both its pseudo-elements, so html::before carries them. */
-html::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: var(--stars-opacity);
-  background-image:
-    radial-gradient(1px 1px at 12% 18%, #fff, transparent),
-    radial-gradient(1px 1px at 34% 62%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 58% 28%, #fff, transparent),
-    radial-gradient(1px 1px at 76% 12%, #fff, transparent),
-    radial-gradient(1px 1px at 88% 54%, #fff, transparent),
-    radial-gradient(1px 1px at 22% 86%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 66% 90%, #fff, transparent),
-    radial-gradient(1px 1px at 46% 44%, #fff, transparent);
-}
-
-#root {
-  position: relative;
-  z-index: 1;
-}
-
-/* The app shell paints bg-paper, which would hide the ambient layers. Body already
-   paints --paper, so making the shell transparent looks identical minus the glow.
-   UI tickets can drop bg-paper from the shell later. */
-#root > .bg-paper {
-  background-color: transparent;
-}
-
-@keyframes ambient-drift {
-  0% {
-    transform: translate3d(-3%, -2%, 0) scale(1);
-  }
-  100% {
-    transform: translate3d(3%, 2%, 0) scale(1.08);
-  }
-}
-
 /* ---------- Shared utilities ---------- */
 
 @layer components {
   .glass {
     background: var(--panel);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
-    backdrop-filter: blur(16px) saturate(140%);
     border: 1px solid var(--line);
+    box-shadow: var(--shadow);
   }
 
   .pill {
@@ -176,7 +135,7 @@ html::before {
     justify-content: center;
     gap: 0.4rem;
     border-radius: 9999px;
-    padding: 0.375rem 0.95rem;
+    padding: 0.375rem 1rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
     cursor: pointer;
@@ -190,13 +149,14 @@ html::before {
 
   .btn-primary {
     background: var(--accent);
-    color: var(--paper);
+    color: var(--on-accent);
     border: 1px solid var(--accent);
-    font-weight: 500;
+    font-weight: 600;
   }
   .btn-primary:hover:not(:disabled) {
-    opacity: 0.88;
-    box-shadow: 0 0 18px 2px var(--glow);
+    background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+    border-color: color-mix(in srgb, var(--accent) 88%, var(--ink));
+    box-shadow: var(--shadow);
   }
 
   .btn-ghost {
@@ -207,33 +167,37 @@ html::before {
   .btn-ghost:hover:not(:disabled) {
     color: var(--ink);
     background: var(--user);
-    border-color: color-mix(in srgb, var(--ink) 35%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   }
 
   .btn-primary:disabled,
   .btn-ghost:disabled {
-    opacity: 0.4;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 
   .label {
-    font-family: var(--font-mono);
-    font-size: 0.65625rem;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
     line-height: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
+    font-weight: 600;
     color: var(--muted);
   }
 
   .glow-ring {
     transition: box-shadow 0.2s;
   }
-  .glow-ring:focus-visible,
+  .glow-ring:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--paper),
+      0 0 0 4px var(--accent);
+  }
   .glow-ring.is-active {
     outline: none;
     box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent),
-      0 0 18px 2px var(--glow);
+      0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent),
+      0 4px 14px var(--glow);
   }
 
   .text-danger {
@@ -247,15 +211,15 @@ html::before {
   .shimmer {
     background: linear-gradient(
       100deg,
-      var(--muted) 30%,
-      var(--ink) 50%,
-      var(--muted) 70%
+      var(--muted) 35%,
+      color-mix(in srgb, var(--muted) 55%, var(--ink)) 50%,
+      var(--muted) 65%
     );
     background-size: 220% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: shimmer 1.6s linear infinite;
+    animation: shimmer 2.4s ease-in-out infinite;
   }
 }
 
@@ -303,55 +267,104 @@ html::before {
   padding-left: 1.25rem;
 }
 .markdown blockquote {
-  border-left: 2px solid var(--line);
-  padding-left: 0.75rem;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 0.25rem;
+  padding-left: 0.85rem;
   color: var(--muted);
 }
-/* Code blocks stay dark in both themes so the github-dark highlight palette is readable. */
+/* Code blocks follow the theme: a warm parchment block in light, a warm dark block in dark. */
 .markdown pre {
   overflow-x: auto;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.75rem 0.9rem;
-  background: #0d0d0d;
-  color: #e6e6e6;
+  border-radius: 1rem;
+  border: 1px solid var(--line);
+  padding: 0.85rem 1rem;
+  background: var(--code-bg);
+  color: var(--code-ink);
   font-family: var(--font-mono);
   font-size: 0.85em;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-.dark .markdown pre {
-  background: rgba(10, 10, 10, 0.85);
+  line-height: 1.55;
 }
 .markdown pre code,
 .markdown pre code.hljs {
   background: transparent;
+  color: inherit;
   padding: 0;
   font-family: inherit;
 }
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-literal,
+.markdown .hljs-built_in,
+.markdown .hljs-doctag {
+  color: var(--hl-keyword);
+}
+.markdown .hljs-string,
+.markdown .hljs-regexp,
+.markdown .hljs-addition,
+.markdown .hljs-meta .hljs-string {
+  color: var(--hl-string);
+}
+.markdown .hljs-number,
+.markdown .hljs-symbol,
+.markdown .hljs-bullet,
+.markdown .hljs-variable,
+.markdown .hljs-template-variable {
+  color: var(--hl-number);
+}
+.markdown .hljs-comment,
+.markdown .hljs-quote,
+.markdown .hljs-deletion,
+.markdown .hljs-meta {
+  color: var(--hl-comment);
+}
+.markdown .hljs-title,
+.markdown .hljs-section,
+.markdown .hljs-type,
+.markdown .hljs-class .hljs-title {
+  color: var(--hl-title);
+}
+.markdown .hljs-attr,
+.markdown .hljs-attribute,
+.markdown .hljs-name,
+.markdown .hljs-selector-class,
+.markdown .hljs-selector-id,
+.markdown .hljs-params,
+.markdown .hljs-property {
+  color: var(--hl-attr);
+}
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  font-style: italic;
+}
+.markdown .hljs-strong {
+  font-weight: 700;
+}
+.markdown .hljs-emphasis {
+  font-style: italic;
+}
 .markdown :not(pre) > code {
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--line);
   background: var(--user);
-  padding: 0.1em 0.35em;
+  padding: 0.1em 0.4em;
   font-family: var(--font-mono);
   font-size: 0.875em;
 }
 .markdown a {
-  color: var(--ink);
+  color: var(--accent);
+  font-weight: 600;
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
   text-underline-offset: 3px;
   transition: text-decoration-color 0.15s;
 }
 .markdown a:hover {
-  text-decoration-color: var(--ink);
+  text-decoration-color: var(--accent);
 }
 .markdown h1,
 .markdown h2,
 .markdown h3 {
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 700;
   margin: 0.8em 0 0.3em;
 }
 /* Math: wide display equations scroll inside the message, like tables. */
@@ -370,7 +383,7 @@ html::before {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: 1rem;
 }
 .markdown .markdown-table table {
   width: 100%;
@@ -379,7 +392,7 @@ html::before {
 .markdown .markdown-table th,
 .markdown .markdown-table td {
   min-width: 8rem;
-  padding: 0.375rem 0.75rem;
+  padding: 0.5rem 0.85rem;
   vertical-align: top;
   text-align: left;
 }
@@ -393,12 +406,9 @@ html::before {
 }
 .markdown .markdown-table th {
   background: var(--user);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 700;
   border-bottom: 1px solid var(--line);
 }
 .markdown .markdown-table td {
@@ -413,11 +423,9 @@ html::before {
 
 .react-flow__controls {
   background: var(--panel);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  box-shadow: none !important;
+  border-radius: 1rem;
+  box-shadow: var(--shadow) !important;
   overflow: hidden;
 }
 .react-flow__controls-button {
@@ -440,7 +448,7 @@ html::before {
 .react-flow__attribution {
   background: transparent !important;
   color: var(--muted) !important;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
 }
 
@@ -454,18 +462,18 @@ html::before {
 
 .mic-live {
   background: var(--mic-live);
-  color: var(--paper);
-  box-shadow: 0 0 14px 2px var(--glow);
-  animation: mic-pulse 1.2s ease-out infinite;
+  color: var(--on-accent);
+  box-shadow: 0 2px 10px var(--glow);
+  animation: mic-pulse 1.8s ease-out infinite;
 }
 
 @keyframes mic-pulse {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mic-live) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mic-live) 45%, transparent);
   }
   70% {
-    transform: scale(1.06);
+    transform: scale(1.04);
     box-shadow: 0 0 0 8px transparent;
   }
   100% {
@@ -474,7 +482,6 @@ html::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::before,
   .fade-in,
   .shimmer,
   .mic-live {
@@ -497,9 +504,9 @@ html::before {
 .formula-chip {
   display: inline-block;
   margin: 0 0.125rem;
-  padding: 0.125rem 0.375rem;
+  padding: 0.125rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   background: var(--panel);
   vertical-align: middle;
   line-height: 1.2;
@@ -516,7 +523,7 @@ html::before {
 /* A voice edit in progress. The formula itself stays fully visible. */
 .formula-chip.is-voice {
   border-color: var(--accent);
-  animation: formula-voice 1.2s ease-in-out infinite;
+  animation: formula-voice 1.6s ease-in-out infinite;
 }
 @keyframes formula-voice {
   0%,
