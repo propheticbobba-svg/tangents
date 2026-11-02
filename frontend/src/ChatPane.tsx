@@ -100,7 +100,7 @@ export function ChatPane({
   }
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <section className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden md:h-auto md:flex-1 md:shrink">
       <PinnedGoal goal={goal} onSave={onSaveGoal} />
       <div className="border-b border-line px-4 py-2.5">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
@@ -115,7 +115,7 @@ export function ChatPane({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto" onMouseUp={captureSelection}>
-       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-8">
+       <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-8">
         {view?.forked_from && (
           <blockquote className="mb-10 rounded-2xl border-l-2 border-accent bg-user px-4 py-3 text-sm text-muted">
             <div className="label">Forked from</div>
@@ -156,7 +156,7 @@ export function ChatPane({
        </div>
       </div>
       {error && (
-        <p className="text-danger mx-auto w-full max-w-3xl px-6 pb-2 text-sm" role="alert">
+        <p className="text-danger mx-auto w-full max-w-3xl px-4 pb-2 text-sm md:px-6" role="alert">
           {error}
         </p>
       )}
