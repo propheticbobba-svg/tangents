@@ -19,11 +19,11 @@ import type { Thread } from "./types";
 const NODE_H = 72;
 const GAP_X = 36;
 const GAP_Y = 64;
-// Keep these in sync with ThreadNode: px-3 padding, a 1px border, text-sm font-medium title,
+// Keep these in sync with ThreadNode: px-3.5 padding, a 1px border, text-sm font-semibold title,
 // and the .label kind line (Nunito, 0.75rem = 12px, weight 600, normal case, no tracking).
 // The extra 8px keeps subpixel rounding from clipping the last letter.
-const CARD_CHROME = 12 * 2 + 2 + 8;
-const TITLE_FONT = '500 14px "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif';
+const CARD_CHROME = 14 * 2 + 2 + 8;
+const TITLE_FONT = '600 14px "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif';
 const KIND_FONT = '600 12px "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif';
 const KIND_TRACKING = 0;
 
@@ -85,12 +85,8 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-const EDGE_STYLE = { stroke: "var(--line)", strokeWidth: 1 };
-const ACTIVE_EDGE_STYLE = {
-  stroke: "color-mix(in srgb, var(--ink) 55%, transparent)",
-  strokeWidth: 1.25,
-  filter: "drop-shadow(0 0 3px var(--glow))",
-};
+const EDGE_STYLE = { stroke: "color-mix(in srgb, var(--muted) 45%, transparent)", strokeWidth: 1.5 };
+const ACTIVE_EDGE_STYLE = { stroke: "var(--accent)", strokeWidth: 2 };
 
 function layout(
   threads: Thread[],
@@ -168,7 +164,7 @@ function layout(
 }
 
 function handleClass(active: boolean): string {
-  return `!h-[5px] !w-[5px] !min-h-0 !min-w-0 !border-0 ${active ? "!bg-ink" : "!bg-muted"}`;
+  return `!h-[5px] !w-[5px] !min-h-0 !min-w-0 !border-0 ${active ? "!bg-accent" : "!bg-muted"}`;
 }
 
 function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
@@ -176,8 +172,10 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
   return (
     <div
       title={hover || undefined}
-      className={`glass group relative w-full rounded-2xl px-3 py-2 transition-[border-color,box-shadow] ${
-        data.active ? "glow-ring is-active !border-accent/80" : "hover:!border-muted/60"
+      className={`group relative w-full rounded-2xl border px-3.5 py-2.5 shadow-[var(--shadow)] transition-[border-color,box-shadow] ${
+        data.active
+          ? "border-accent bg-[color-mix(in_srgb,var(--accent)_10%,var(--panel))] ring-2 ring-accent/30"
+          : "border-line bg-panel hover:border-accent/50"
       }`}
     >
       {!data.isCenter && <Handle type="target" position={Position.Top} className={handleClass(data.active)} />}
@@ -185,7 +183,7 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
         <button
           type="button"
           aria-label={`Delete ${data.title}`}
-          className="nodrag nopan absolute -top-2.5 right-2 hidden rounded-full border border-line bg-paper px-2 py-0.5 text-xs font-semibold leading-none text-muted transition-colors hover:border-danger/50 hover:text-danger group-hover:block"
+          className="nodrag nopan absolute -top-2.5 right-2 hidden rounded-full border border-line bg-panel px-2.5 py-1 text-xs font-semibold leading-none text-muted shadow-sm transition-colors hover:border-danger/50 hover:text-danger group-hover:block"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -195,10 +193,10 @@ function ThreadNode({ id, data }: NodeProps<Node<ThreadNodeData>>) {
           Delete
         </button>
       )}
-      <div className="label whitespace-nowrap">{data.kind}</div>
-      <div className="whitespace-nowrap text-sm font-medium text-ink">{data.title}</div>
+      <div className={`label whitespace-nowrap ${data.active ? "!text-accent" : ""}`}>{data.kind}</div>
+      <div className="whitespace-nowrap text-sm font-semibold text-ink">{data.title}</div>
       {data.forkSnippet && (
-        <div className="glass fade-in pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[200px] rounded-xl !bg-[color-mix(in_srgb,var(--paper)_90%,transparent)] p-2.5 text-xs leading-snug text-muted shadow-lg group-hover:block">
+        <div className="glass fade-in pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[200px] rounded-xl p-2.5 text-xs leading-snug text-muted shadow-lg group-hover:block">
           {data.forkSnippet}
         </div>
       )}

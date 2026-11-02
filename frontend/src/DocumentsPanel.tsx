@@ -22,8 +22,8 @@ export function DocumentsPanel({
   const count = documents.length === 1 ? "1 document" : `${documents.length} documents`;
 
   return (
-    <div className="border-b border-line px-3 py-3">
-      <div className="glass rounded-xl border-dashed p-3">
+    <div className="border-b border-line px-4 py-3">
+      <div className="rounded-2xl border border-dashed border-line bg-paper/60 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <span className="label">Documents · {count}</span>
           <button
@@ -47,15 +47,15 @@ export function DocumentsPanel({
             }}
           />
         </div>
-        {indexing && <p className="shimmer mt-2 truncate font-mono text-[11px]">Indexing {indexing}…</p>}
+        {indexing && <p className="shimmer mt-2 truncate text-xs">Indexing {indexing}…</p>}
         {error && <p className="text-danger mt-2 text-xs">{error}</p>}
         {documents.length > 0 && (
           <ul className="mt-2 max-h-40 divide-y divide-line overflow-y-auto">
             {documents.map((document) => (
-              <li key={document.id} className="flex items-center gap-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate text-xs" title={document.filename}>
+              <li key={document.id} className="flex items-center gap-2 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm" title={document.filename}>
                   {document.filename}
-                  <span className="font-mono text-[11px] text-muted">
+                  <span className="text-xs text-muted">
                     {" "}
                     · {document.chunk_count} {document.chunk_count === 1 ? "passage" : "passages"}
                   </span>
@@ -64,7 +64,7 @@ export function DocumentsPanel({
                   type="button"
                   disabled={disabled || indexing !== null}
                   onClick={() => onDelete(document)}
-                  className="shrink-0 rounded-full px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                  className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                 >
                   Delete
                 </button>
