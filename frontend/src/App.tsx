@@ -64,8 +64,18 @@ function subtreeIds(threads: Thread[], rootId: string): Set<string> {
 
 function toggleClass(on: boolean): string {
   return `btn-ghost glow-ring shrink-0${
-    on ? " is-active border-[color-mix(in_srgb,var(--ink)_45%,transparent)] text-ink" : ""
+    on ? " !border-accent !bg-accent !text-[var(--on-accent)] font-semibold" : ""
   }`;
+}
+
+/** Solid when on, hollow when off, so the state does not rely on color alone. */
+function ToggleDot({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block h-2 w-2 rounded-full border-[1.5px] border-current ${on ? "bg-current" : "bg-transparent"}`}
+    />
+  );
 }
 
 /** A chat with no first message yet has no goal to name it by. */
@@ -427,8 +437,11 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col text-ink">
-      <header className="glass relative z-20 flex h-14 shrink-0 items-center gap-2 border-x-0 border-t-0 px-4">
-        <span className="mr-1 shrink-0 font-sans text-[17px] font-semibold tracking-tight">Tangents</span>
+      <header className="relative z-20 flex h-16 shrink-0 items-center gap-2.5 border-b border-line bg-panel px-5">
+        <span className="mr-2 flex shrink-0 items-center gap-2 font-sans text-lg font-bold tracking-tight">
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-accent" />
+          Tangents
+        </span>
         <div className="relative min-w-0" ref={menuRef}>
           <button
             type="button"
@@ -456,7 +469,7 @@ export function App() {
             <ul
               role="listbox"
               aria-label="Conversations"
-              className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-xl py-1 shadow-lg"
+              className="glass fade-in absolute left-0 top-full z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded-2xl p-1.5 shadow-lg"
             >
               {conversations.map((conversation) => {
                 const label = conversation.goal_snippet || UNTITLED_CHAT;
@@ -464,7 +477,7 @@ export function App() {
                 return (
                   <li
                     key={conversation.id}
-                    className="flex items-center gap-1 border-b border-line pr-1 last:border-b-0 hover:bg-user"
+                    className={`flex items-center gap-1 rounded-xl pr-1 hover:bg-user ${selected ? "bg-user" : ""}`}
                   >
                     <button
                       type="button"
@@ -474,7 +487,7 @@ export function App() {
                         setMenuOpen(false);
                         void pickConversation(conversation.id);
                       }}
-                      className={`glow-ring min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-left text-sm ${selected ? "font-medium text-ink" : "text-muted hover:text-ink"}`}
+                      className={`glow-ring min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-left text-sm ${selected ? "font-semibold text-ink" : "text-muted hover:text-ink"}`}
                     >
                       {label}
                     </button>
@@ -483,7 +496,7 @@ export function App() {
                       aria-label={`Delete ${label}`}
                       disabled={sending}
                       onClick={() => void removeConversation(conversation.id)}
-                      className="glow-ring shrink-0 rounded-full px-2 py-1 text-xs text-muted hover:text-danger disabled:opacity-40"
+                      className="glow-ring shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                     >
                       Delete
                     </button>
@@ -514,6 +527,7 @@ export function App() {
           }}
           className={toggleClass(web)}
         >
+          <ToggleDot on={web} />
           Web
         </button>
         <button
@@ -529,6 +543,7 @@ export function App() {
           }}
           className={toggleClass(docs)}
         >
+          <ToggleDot on={docs} />
           Docs
         </button>
         <button
@@ -544,6 +559,7 @@ export function App() {
           }}
           className={toggleClass(charts)}
         >
+          <ToggleDot on={charts} />
           Charts
         </button>
         <div className="flex-1" />
@@ -552,27 +568,49 @@ export function App() {
           onClick={toggle}
           className="btn-ghost glow-ring shrink-0 whitespace-nowrap"
         >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {resolved === "dark" ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+              </>
+            ) : (
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            )}
+          </svg>
           {resolved === "dark" ? "Light" : "Dark"}
         </button>
       </header>
       {booting ? (
-        <p className="label shimmer p-6">Loading…</p>
+        <p className="shimmer px-6 py-8 text-base">Loading…</p>
       ) : !conversationId ? (
-        <div className="fade-in flex flex-1 flex-col items-start justify-center gap-6 px-8 py-24 md:px-16">
-          <h1 className="max-w-3xl text-5xl font-light leading-[1.05] tracking-tight md:text-6xl">
-            A center node, and side nodes for the tangents.
-          </h1>
-          <p className="max-w-lg text-base text-muted">
-            The main thread never picks up tokens from a side node. A side node only inherits the path up to the message you forked from.
-          </p>
-          {error && <p className="text-danger text-sm">{error}</p>}
-          <button
-            type="button"
-            onClick={() => void startConversation()}
-            className="btn-primary glow-ring px-5 py-2"
-          >
-            New conversation
-          </button>
+        <div className="flex flex-1 items-center justify-center px-6 py-12">
+          <div className="glass fade-in flex max-w-2xl flex-col items-center gap-5 rounded-3xl p-8 text-center md:p-12">
+            <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-4xl">
+              A center node, and side nodes for the tangents.
+            </h1>
+            <p className="max-w-lg text-base leading-relaxed text-muted md:text-lg">
+              The main thread never picks up tokens from a side node. A side node only inherits the path up to the message you forked from.
+            </p>
+            {error && <p className="text-danger text-sm">{error}</p>}
+            <button
+              type="button"
+              onClick={() => void startConversation()}
+              className="btn-primary glow-ring px-6 py-2.5 !text-base"
+            >
+              New conversation
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -637,7 +675,7 @@ export function App() {
           <aside
             ref={asideRef}
             style={{ width: sidebarWidth }}
-            className="glass relative flex shrink-0 flex-col border-y-0 border-r-0"
+            className="relative flex shrink-0 flex-col border-l border-line bg-panel"
           >
             <ResizeHandle width={sidebarWidth} onPreview={previewSidebarWidth} onCommit={commitSidebarWidth} />
             <DocumentsPanel
@@ -648,7 +686,7 @@ export function App() {
               onUpload={(files) => void uploadFiles(files)}
               onDelete={(document) => void removeDocument(document)}
             />
-            <div className="label border-b border-line px-3 py-2">
+            <div className="label px-4 pb-1.5 pt-3">
               Tree
             </div>
             <div className="min-h-0 flex-1">
