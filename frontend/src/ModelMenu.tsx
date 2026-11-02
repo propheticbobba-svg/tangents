@@ -57,7 +57,7 @@ export function ModelMenu({
         aria-expanded={open}
         aria-label={`Model and effort, ${label}`}
         onClick={() => setOpen((current) => !current)}
-        className="btn-ghost"
+        className="btn-ghost glow-ring min-h-11 px-4 text-[13px] font-semibold"
       >
         {label}
       </button>
@@ -65,7 +65,7 @@ export function ModelMenu({
         <div
           role="menu"
           aria-label="Model and effort"
-          className="glass fade-in absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl py-1 shadow-lg"
+          className="glass fade-in absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl py-1.5 shadow-lg"
         >
           {MODELS.map((item) => (
             <button
@@ -74,7 +74,7 @@ export function ModelMenu({
               role="menuitemradio"
               aria-checked={item.id === model}
               onClick={() => onModel(item.id)}
-              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
+              className="mx-1.5 flex min-h-9 w-[calc(100%-0.75rem)] items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-user"
             >
               <span>{item.label}</span>
               {item.id === model && <span aria-hidden="true" className="text-ink">✓</span>}
@@ -93,7 +93,7 @@ export function ModelMenu({
                     onEffort(level);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
+                  className="mx-1.5 flex min-h-9 w-[calc(100%-0.75rem)] items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-user"
                 >
                   <span>
                     {EFFORT_LABELS[level]}
@@ -108,14 +108,14 @@ export function ModelMenu({
           )}
           <div className="mt-1 border-t border-line pt-1">
             {info.thinking === "adaptive" ? (
-              <p className="px-3 py-1.5 text-xs text-muted">Thinking is always on for this model.</p>
+              <p className="px-4 py-2 text-[13px] text-muted">Thinking is always on for this model.</p>
             ) : (
               <button
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={extended}
                 onClick={() => onExtended(!extended)}
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-user"
+                className="mx-1.5 flex min-h-9 w-[calc(100%-0.75rem)] items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-user"
               >
                 <span>Extended thinking</span>
                 {extended && <span aria-hidden="true" className="text-ink">✓</span>}

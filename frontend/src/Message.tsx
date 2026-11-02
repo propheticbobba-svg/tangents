@@ -56,9 +56,17 @@ function chartComponents(streaming: boolean): Components {
 const FINISHED_COMPONENTS = chartComponents(false);
 const STREAMING_COMPONENTS = chartComponents(true);
 
-export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+export function Markdown({
+  text,
+  streaming = false,
+  compact = false,
+}: {
+  text: string;
+  streaming?: boolean;
+  compact?: boolean;
+}) {
   return (
-    <div className="markdown text-sm leading-relaxed">
+    <div className={`markdown ${compact ? "text-sm leading-relaxed" : "text-[15px] leading-7"}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
@@ -96,7 +104,7 @@ export function MessageView({
     <article
       data-message-id={message.id}
       data-role={message.role}
-      className={`fade-in ${user ? "ml-16" : "mr-10"}`}
+      className={`fade-in ${user ? "ml-12" : "mr-6"}`}
     >
       {summaries.map((summary, index) => (
         <CompactionDivider key={`${message.id}-compact-${index}`} summary={summary} />
@@ -115,7 +123,7 @@ export function MessageView({
       <div
         className={
           user
-            ? `ml-auto w-fit max-w-full rounded-2xl border px-4 py-2.5 backdrop-blur ${
+            ? `ml-auto w-fit max-w-full rounded-3xl border px-5 py-3 ${
                 message.is_note
                   ? "border-dashed border-line bg-panel"
                   : "border-line bg-user"
@@ -127,8 +135,8 @@ export function MessageView({
         {text && <Markdown text={text} />}
       </div>
       {message.role === "assistant" && stopReason === "max_tokens" && (
-        <div className="mt-2 flex items-center gap-2">
-          <p className="font-mono text-[11px] text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p className="text-[13px] text-muted">
             Claude hit the maximum length for this message.
           </p>
           {onContinue && (
@@ -136,7 +144,7 @@ export function MessageView({
               type="button"
               disabled={forkDisabled}
               onClick={onContinue}
-              className="btn-ghost glow-ring px-2.5 py-0.5 font-mono text-[11px]"
+              className="btn-ghost glow-ring min-h-9 px-4 text-[13px]"
             >
               Continue
             </button>
@@ -144,10 +152,10 @@ export function MessageView({
         </div>
       )}
       {message.role === "assistant" && stopReason === "model_context_window_exceeded" && (
-        <p className="mt-2 font-mono text-[11px] text-muted">This node ran out of context.</p>
+        <p className="mt-3 text-[13px] text-muted">This node ran out of context.</p>
       )}
       {message.role === "assistant" && stopReason === "refusal" && (
-        <p className="mt-2 font-mono text-[11px] text-muted">Claude stopped this reply.</p>
+        <p className="mt-3 text-[13px] text-muted">Claude stopped this reply.</p>
       )}
       {message.role === "assistant" && message.usage && <UsageFooter usage={message.usage} />}
       {message.role === "assistant" && (
@@ -156,7 +164,7 @@ export function MessageView({
             type="button"
             disabled={forkDisabled}
             onClick={() => onFork(message.id)}
-            className="pointer-events-auto sticky bottom-3 z-10 mt-2 ml-auto block w-fit glass glow-ring rounded-full px-3 py-0.5 font-mono text-[11px] text-muted transition-colors hover:text-ink disabled:opacity-40"
+            className="pointer-events-auto sticky bottom-3 z-10 mt-3 ml-auto block min-h-9 w-fit glass glow-ring rounded-full px-4 text-[13px] font-semibold text-muted transition-colors hover:text-ink disabled:opacity-40"
           >
             Fork
           </button>
@@ -182,7 +190,7 @@ export function StreamingMessage({
   thinkingEndedAt: number | null;
 }) {
   return (
-    <article className="fade-in mr-10" data-role="assistant">
+    <article className="fade-in mr-6" data-role="assistant">
       {summaries.map((summary, index) => (
         <CompactionDivider key={`stream-compact-${index}`} summary={summary} />
       ))}
@@ -196,7 +204,7 @@ export function StreamingMessage({
         />
       )}
       {activity.length > 0 && (
-        <ul className="mb-2 select-none space-y-0.5 font-mono text-[11px] text-muted">
+        <ul className="mb-2 select-none space-y-1 text-[13px] text-muted">
           {activity.map((line, index) => (
             <li key={`stream-activity-${index}`} className="truncate">
               {line}
@@ -208,7 +216,7 @@ export function StreamingMessage({
         <Markdown text={text} streaming />
       ) : (
         summaries.length === 0 && activity.length === 0 && thinkingStartedAt === null && (
-          <p className="shimmer w-fit text-sm">Thinking…</p>
+          <p className="shimmer w-fit text-[15px]">Thinking…</p>
         )
       )}
     </article>

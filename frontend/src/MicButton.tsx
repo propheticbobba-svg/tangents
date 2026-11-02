@@ -19,7 +19,7 @@ export function MicButtonView({
   return (
     <button
       type="button"
-      className={`grid h-8 w-8 place-items-center rounded-full transition-colors disabled:opacity-40 ${
+      className={`glow-ring grid h-11 w-11 place-items-center rounded-full transition-colors disabled:opacity-40 ${
         listening ? "mic-live" : "mic-idle"
       }`}
       aria-label={label}
@@ -30,8 +30,8 @@ export function MicButtonView({
       onClick={onClick}
     >
       <svg
-        width="16"
-        height="16"
+        width="20"
+        height="20"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

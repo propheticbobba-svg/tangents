@@ -12,17 +12,19 @@ export function Breadcrumb({
   disabled: boolean;
 }) {
   return (
-    <nav aria-label="Thread ancestry" className="flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-xs">
+    <nav aria-label="Thread ancestry" className="flex min-w-0 flex-wrap items-center gap-1 text-[13px]">
       {ancestry.map((item, index) => (
-        <span key={item.id} className="flex min-w-0 items-center gap-1.5">
-          {index > 0 && <span className="text-muted opacity-50">/</span>}
+        <span key={item.id} className="flex min-w-0 items-center gap-1">
+          {index > 0 && <span className="text-muted">/</span>}
           <button
             type="button"
             disabled={disabled || item.id === currentId}
             onClick={() => onSelect(item.id)}
-            className={`max-w-48 truncate transition-colors ${
-              item.id === currentId ? "text-ink" : "text-muted hover:text-ink"
-            } disabled:hover:text-muted`}
+            className={`glow-ring max-w-48 truncate rounded-full px-2.5 py-1 transition-colors ${
+              item.id === currentId
+                ? "font-semibold text-ink"
+                : "text-muted hover:bg-user hover:text-ink"
+            } disabled:hover:bg-transparent`}
           >
             {item.title}
           </button>

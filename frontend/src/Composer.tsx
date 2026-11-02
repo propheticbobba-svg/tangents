@@ -98,7 +98,7 @@ export function Composer({
         "aria-multiline": "true",
         "aria-label": "Message",
         class:
-          "composer-editor min-h-[4.25rem] max-h-48 w-full overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm outline-none",
+          "composer-editor min-h-[4.25rem] max-h-48 w-full overflow-y-auto border-0 bg-transparent px-3 py-2 text-[15px] leading-7 outline-none",
       },
       handlePaste(view, event) {
         const html = event.clipboardData?.getData("text/html") ?? "";
@@ -161,7 +161,7 @@ export function Composer({
       }}
     >
       <div
-        className={`glass glow-ring mx-auto w-full max-w-3xl rounded-3xl p-3 ${
+        className={`glass glow-ring mx-auto w-full max-w-3xl rounded-[1.75rem] p-3.5 ${
           focused ? "is-active" : ""
         } ${disabled ? "opacity-60" : ""}`}
         onFocus={() => setFocused(true)}
@@ -188,7 +188,7 @@ export function Composer({
           <button
             type="submit"
             disabled={disabled || empty}
-            className="btn-primary"
+            className="btn-primary glow-ring min-h-11 px-5 text-[15px]"
           >
             Send
             <span aria-hidden="true">↑</span>

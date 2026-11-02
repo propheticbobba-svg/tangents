@@ -26,21 +26,21 @@ export function SelectionPopover({
   return (
     <div
       ref={ref}
-      className="glass fade-in fixed z-30 flex gap-1 rounded-full p-1 shadow-lg"
+      className="glass fade-in fixed z-30 flex gap-1 rounded-full p-1.5 shadow-lg"
       style={{ left: x, top: y }}
       onMouseDown={(event) => event.preventDefault()}
     >
       <button
         type="button"
         onClick={onFork}
-        className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+        className="btn-ghost glow-ring min-h-9 border-transparent px-4 text-[13px] font-semibold"
       >
         Fork from this
       </button>
       <button
         type="button"
         onClick={onExplain}
-        className="btn-ghost glow-ring border-transparent px-3 py-1 text-xs"
+        className="btn-ghost glow-ring min-h-9 border-transparent px-4 text-[13px] font-semibold"
       >
         Explain this
       </button>
