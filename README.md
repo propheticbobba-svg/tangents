@@ -125,6 +125,7 @@ Stored messages are not edited or deleted, except the user message of a turn tha
 | --- | --- | --- | --- |
 | `GET` | `/api/conversations` | | Conversations, newest first, each with `goal_snippet`. |
 | `POST` | `/api/conversations` | | Creates a conversation and its empty center node. |
+| `GET` | `/api/search?q=` | | Messages (user and assistant text only; never thinking, document passages or web results) containing every word of `q`, any order, any case. Returns `{query, results, truncated}`; up to 50 results, newest first, `truncated` true if more were cut. Each result: `conversation_id`, `conversation_name`, `thread_id`, `thread_title`, `is_side_node`, `message_id`, `role`, `created_at`, `snippet` (~160 characters around the first word). 400 if `q` is blank. |
 | `PATCH` | `/api/conversations/{id}` | `{goal}` | Sets the pinned goal. |
 | `GET` | `/api/conversations/{id}/tree` | | `goal` plus every thread: `parent_thread_id`, `fork_message_id`, `title`, `fork_snippet` (~120 characters of the fork-point text), `fork_position` (0-based index of the fork message in the parent thread). |
 | `GET` | `/api/threads/{id}/messages` | | The thread's own messages, the fork-point message (`forked_from`), and `ancestry` from the center node to this thread. |
