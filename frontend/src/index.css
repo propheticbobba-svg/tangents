@@ -481,7 +481,27 @@ textarea {
   }
 }
 
+@keyframes jump-glow {
+  from {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent);
+    background-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 6px transparent;
+    background-color: transparent;
+  }
+}
+
+.jump-highlight {
+  border-radius: 1rem;
+  animation: jump-glow 2s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .jump-highlight {
+    animation: none;
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
   .fade-in,
   .shimmer,
   .mic-live {

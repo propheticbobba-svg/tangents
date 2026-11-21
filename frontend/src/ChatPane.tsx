@@ -42,7 +42,9 @@ export function ChatPane({
   onFormulaMic,
   onComposerError,
   onContinue,
+  jump = null,
 }: {
+  jump?: { messageId: string; nonce: number } | null;
   view: ThreadView | null;
   goal: string | null;
   streaming: StreamingTurn | null;
@@ -67,8 +69,13 @@ export function ChatPane({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const sideNode = view !== null && view.thread.parent_thread_id !== null;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const handledJump = useRef<number | null>(null);
+  const [jumpNote, setJumpNote] = useState<string | null>(null);
+  const jumpPending = jump !== null && handledJump.current !== jump.nonce;
 
   useEffect(() => {
+    if (jumpPending) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [
     view?.messages.length,
@@ -77,6 +84,35 @@ export function ChatPane({
     streaming?.activity.length,
     streaming?.thinking,
   ]);
+
+  useEffect(() => {
+    if (!jump || !view || handledJump.current === jump.nonce) return;
+    handledJump.current = jump.nonce;
+    const target = Array.from(
+      scrollRef.current?.querySelectorAll<HTMLElement>("[data-message-id]") ?? [],
+    ).find((el) => el.dataset.messageId === jump.messageId);
+    if (!target) {
+      setJumpNote("That message couldn't be found. It may have been deleted.");
+      return;
+    }
+    setJumpNote(null);
+    target.scrollIntoView({ block: "center" });
+    target.classList.remove("jump-highlight");
+    void target.offsetWidth;
+    target.classList.add("jump-highlight");
+    const timer = window.setTimeout(() => target.classList.remove("jump-highlight"), 2200);
+    return () => {
+      window.clearTimeout(timer);
+      target.classList.remove("jump-highlight");
+    };
+  }, [jump, view]);
+
+  const noteThread = useRef(view?.thread.id);
+  useEffect(() => {
+    if (noteThread.current === view?.thread.id) return;
+    noteThread.current = view?.thread.id;
+    setJumpNote(null);
+  }, [view?.thread.id]);
 
   function captureSelection() {
     const sel = window.getSelection();
@@ -114,7 +150,12 @@ export function ChatPane({
           )}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" onMouseUp={captureSelection}>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" onMouseUp={captureSelection}>
+        {jumpNote && (
+          <p className="mx-auto w-full max-w-3xl px-4 pt-4 text-sm text-muted sm:px-8" role="status">
+            {jumpNote}
+          </p>
+        )}
        <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-8">
         {view?.forked_from && (
           <blockquote className="mb-10 rounded-2xl border-l-2 border-accent bg-user px-4 py-3 text-sm text-muted">
