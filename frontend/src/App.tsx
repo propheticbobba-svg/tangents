@@ -98,6 +98,7 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const [jump, setJump] = useState<{ messageId: string; nonce: number } | null>(null);
   const [model, setModel] = useState<ModelId>(loadModel);
   const [effort, setEffort] = useState<Effort | null>(() => loadEffort(loadModel()));
   const [extended, setExtended] = useState<boolean>(loadExtendedThinking);
@@ -248,6 +249,7 @@ export function App() {
     setError(null);
     setDraft(emptyDraft());
     setStreaming(null);
+    setJump(null);
     await openConversation(id);
   }
 
@@ -259,6 +261,7 @@ export function App() {
     setStreaming(null);
     try {
       await openConversation(result.conversation_id, result.thread_id);
+      setJump({ messageId: result.message_id, nonce: Date.now() });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open that result");
     }
@@ -269,6 +272,7 @@ export function App() {
     setError(null);
     setDraft(emptyDraft());
     setStreaming(null);
+    setJump(null);
     try {
       setThreadId(id);
       setView(await getMessages(id));
@@ -631,6 +635,7 @@ export function App() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-visible">
           <ChatPane
+            jump={jump}
             view={view}
             goal={tree?.goal ?? null}
             streaming={streaming}
