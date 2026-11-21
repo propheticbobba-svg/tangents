@@ -90,6 +90,32 @@ export type Tree = {
   threads: Thread[];
 };
 
+export type SearchResult = {
+  conversation_id: string;
+  conversation_name: string;
+  thread_id: string;
+  thread_title: string;
+  is_side_node: boolean;
+  message_id: string;
+  role: "user" | "assistant";
+  created_at: string;
+  snippet: string;
+};
+
+export type SearchChat = {
+  conversation_id: string;
+  conversation_name: string;
+  total: number;
+  latest_at: string;
+};
+
+export type SearchResponse = {
+  query: string;
+  results: SearchResult[];
+  truncated: boolean;
+  chats: SearchChat[];
+};
+
 export type StreamingTurn = {
   text: string;
   summaries: string[];

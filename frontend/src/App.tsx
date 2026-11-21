@@ -18,6 +18,7 @@ import { appendDictation, emptyDraft, isDraftEmpty, serializeDraft, textDraft, t
 import { DocumentsPanel } from "./DocumentsPanel";
 import { MicButton, type DictationPhase } from "./MicButton";
 import { ResizeHandle } from "./ResizeHandle";
+import { SearchBox } from "./SearchBox";
 import { TreeView } from "./TreeView";
 import { loadCharts, saveCharts } from "./charts";
 import { loadDocSearch, saveDocSearch } from "./docsearch";
@@ -39,6 +40,7 @@ import { useTheme } from "./theme";
 import {
   quoteText,
   type Conversation,
+  type SearchResult,
   type DocumentInfo,
   type StreamingTurn,
   type Thread,
@@ -247,6 +249,19 @@ export function App() {
     setDraft(emptyDraft());
     setStreaming(null);
     await openConversation(id);
+  }
+
+  async function openSearchResult(result: SearchResult) {
+    if (sending) return;
+    setMenuOpen(false);
+    setError(null);
+    setDraft(emptyDraft());
+    setStreaming(null);
+    try {
+      await openConversation(result.conversation_id, result.thread_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open that result");
+    }
   }
 
   async function selectThread(id: string) {
@@ -506,6 +521,7 @@ export function App() {
             </ul>
           )}
         </div>
+        <SearchBox disabled={sending} onOpenResult={(result) => void openSearchResult(result)} />
         <button
           type="button"
           disabled={sending}

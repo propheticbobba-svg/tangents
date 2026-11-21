@@ -576,14 +576,26 @@ def search_messages(
     )
     results: list[dict[str, Any]] = []
     truncated = False
+    # Per-chat totals count every match, including those past the row cap.
+    # Rows arrive newest first, so a chat's first match is its newest.
+    totals: dict[str, dict[str, Any]] = {}
     for row in rows:
         text = text_of(json.loads(row["content"]))
         lowered = text.lower()
         if not words or not all(word in lowered for word in words):
             continue
+        chat = totals.get(row["conversation_id"])
+        if chat is None:
+            chat = totals[row["conversation_id"]] = {
+                "conversation_id": row["conversation_id"],
+                "conversation_name": snippet(row["goal"], 80) or "Untitled",
+                "total": 0,
+                "latest_at": row["created_at"],
+            }
+        chat["total"] += 1
         if len(results) >= limit:
             truncated = True
-            break
+            continue
         results.append(
             {
                 "conversation_id": row["conversation_id"],
@@ -597,7 +609,9 @@ def search_messages(
                 "snippet": _match_snippet(text, words),
             }
         )
-    return {"query": query, "results": results, "truncated": truncated}
+    chats = sorted(totals.values(), key=lambda chat: chat["latest_at"], reverse=True)
+    chats.sort(key=lambda chat: chat["total"], reverse=True)
+    return {"query": query, "results": results, "truncated": truncated, "chats": chats}
 
 
 def note_user_message(conn: sqlite3.Connection, thread: dict[str, Any], text: str) -> dict[str, Any]:
