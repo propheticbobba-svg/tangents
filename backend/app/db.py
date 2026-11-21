@@ -528,6 +528,78 @@ def tree(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any] | Non
     }
 
 
+SEARCH_LIMIT = 50
+
+
+def _match_snippet(text: str, words: list[str], width: int = 160) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= width:
+        return collapsed
+    pos = collapsed.lower().find(words[0])
+    if pos < 0:
+        pos = 0
+    start = max(0, pos - width // 4)
+    end = min(len(collapsed), start + width)
+    start = max(0, end - width)
+    piece = collapsed[start:end].strip()
+    return ("…" if start > 0 else "") + piece + ("…" if end < len(collapsed) else "")
+
+
+def search_messages(
+    conn: sqlite3.Connection, query: str, limit: int = SEARCH_LIMIT
+) -> dict[str, Any]:
+    """Messages whose visible text holds every word of the query, newest first.
+
+    Only text blocks count (text_of), so thinking, document passages, web
+    results and encrypted content never match.
+    """
+    words = query.lower().split()
+    clauses = ["m.role IN ('user', 'assistant')"]
+    params: list[Any] = []
+    for word in words:
+        if json.dumps(word)[1:-1] == word:
+            escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("LOWER(m.content) LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
+    rows = conn.execute(
+        f"""
+        SELECT m.id AS message_id, m.role, m.content, m.created_at,
+               t.id AS thread_id, t.title, t.parent_thread_id,
+               c.id AS conversation_id, c.goal
+        FROM messages m
+        JOIN threads t ON t.id = m.thread_id
+        JOIN conversations c ON c.id = t.conversation_id
+        WHERE {" AND ".join(clauses)}
+        ORDER BY m.created_at DESC, m.id DESC
+        """,
+        params,
+    )
+    results: list[dict[str, Any]] = []
+    truncated = False
+    for row in rows:
+        text = text_of(json.loads(row["content"]))
+        lowered = text.lower()
+        if not words or not all(word in lowered for word in words):
+            continue
+        if len(results) >= limit:
+            truncated = True
+            break
+        results.append(
+            {
+                "conversation_id": row["conversation_id"],
+                "conversation_name": snippet(row["goal"], 80) or "Untitled",
+                "thread_id": row["thread_id"],
+                "thread_title": row["title"],
+                "is_side_node": row["parent_thread_id"] is not None,
+                "message_id": row["message_id"],
+                "role": row["role"],
+                "created_at": row["created_at"],
+                "snippet": _match_snippet(text, words),
+            }
+        )
+    return {"query": query, "results": results, "truncated": truncated}
+
+
 def note_user_message(conn: sqlite3.Connection, thread: dict[str, Any], text: str) -> dict[str, Any]:
     """Seed the goal from the center node's first user message.
 

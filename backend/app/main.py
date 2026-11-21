@@ -40,6 +40,7 @@ from app.db import (
     next_parent_id,
     note_user_message,
     rename_thread,
+    search_messages,
     set_thread_sketch,
     short_title,
     text_of,
@@ -184,6 +185,17 @@ def get_conversations() -> list[dict]:
     conn = connect()
     try:
         return list_conversations(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/api/search")
+def get_search(q: str = "") -> dict:
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="Search is empty")
+    conn = connect()
+    try:
+        return search_messages(conn, q.strip())
     finally:
         conn.close()
 
