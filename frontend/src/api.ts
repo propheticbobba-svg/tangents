@@ -1,4 +1,4 @@
-import type { Conversation, DocumentInfo, Message, Thread, ThreadView, Tree, WebSource } from "./types";
+import type { Conversation, DocumentInfo, Message, SearchResponse, Thread, ThreadView, Tree, WebSource } from "./types";
 import type { SpokenPart } from "./draft";
 
 export type ChatEvent =
@@ -126,6 +126,10 @@ export async function editFormula(latex: string, spoken: string): Promise<string
     throw new Error("Could not update that formula");
   }
   return result.latex;
+}
+
+export function searchMessages(query: string, signal?: AbortSignal): Promise<SearchResponse> {
+  return request(`/api/search?q=${encodeURIComponent(query)}`, { signal });
 }
 
 export function getMessages(threadId: string): Promise<ThreadView> {
