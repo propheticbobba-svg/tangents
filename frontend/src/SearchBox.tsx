@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { searchMessages } from "./api";
-import type { SearchResult } from "./types";
+import type { SearchChat, SearchResponse, SearchResult } from "./types";
 
 const DEBOUNCE_MS = 250;
 
@@ -24,6 +24,52 @@ function highlight(text: string, query: string): ReactNode {
   );
 }
 
+function ChatGroup({
+  chat,
+  matches,
+  query,
+  onPick,
+}: {
+  chat: SearchChat;
+  matches: SearchResult[];
+  query: string;
+  onPick: (result: SearchResult) => void;
+}) {
+  if (matches.length === 0) return null;
+  return (
+    <section aria-label={chat.conversation_name}>
+      <h3 className="label flex items-center gap-1.5 px-3 pb-0.5 pt-1">
+        <span className="truncate font-semibold text-ink">{chat.conversation_name}</span>
+        <span aria-hidden="true">·</span>
+        <span data-testid="chat-count">{chat.total}</span>
+      </h3>
+      <ul role="list" className="flex flex-col gap-0.5">
+        {matches.map((result) => (
+          <li key={result.message_id}>
+            <button
+              type="button"
+              onClick={() => onPick(result)}
+              className="glow-ring flex w-full flex-col gap-0.5 rounded-xl px-3 py-2 text-left hover:bg-user max-md:min-h-11"
+            >
+              <span className="flex items-center gap-2 text-xs text-muted">
+                <span className="truncate">{result.is_side_node ? result.thread_title : "Main chat"}</span>
+                <span aria-hidden="true">·</span>
+                <span className="shrink-0">{result.role === "user" ? "You" : "Claude"}</span>
+              </span>
+              <span className="text-sm leading-snug text-ink">{highlight(result.snippet, query)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {matches.length < chat.total && (
+        <p className="px-3 pt-0.5 text-xs text-muted">
+          Showing {matches.length} of {chat.total}
+        </p>
+      )}
+    </section>
+  );
+}
+
 type Props = {
   disabled: boolean;
   onOpenResult: (result: SearchResult) => void;
@@ -32,7 +78,7 @@ type Props = {
 export function SearchBox({ disabled, onOpenResult }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -62,7 +108,7 @@ export function SearchBox({ disabled, onOpenResult }: Props) {
     try {
       const response = await searchMessages(trimmed, controller.signal);
       if (controller.signal.aborted) return;
-      setResults(response.results);
+      setResults(response);
     } catch (err) {
       if (controller.signal.aborted) return;
       setResults(null);
@@ -144,33 +190,24 @@ export function SearchBox({ disabled, onOpenResult }: Props) {
           <div className="min-h-0 overflow-y-auto" aria-live="polite">
             {loading && <p className="shimmer px-3 py-2 text-sm">Searching…</p>}
             {error && <p className="px-3 py-2 text-sm text-danger">Could not search: {error}</p>}
-            {!loading && !error && results !== null && results.length === 0 && (
+            {!loading && !error && results !== null && results.results.length === 0 && (
               <p className="px-3 py-2 text-sm text-muted">No matches</p>
             )}
-            {!error && results !== null && results.length > 0 && (
-              <ul role="list" className="flex flex-col gap-0.5">
-                {results.map((result) => (
-                  <li key={result.message_id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        close();
-                        onOpenResult(result);
-                      }}
-                      className="glow-ring flex w-full flex-col gap-0.5 rounded-xl px-3 py-2 text-left hover:bg-user max-md:min-h-11"
-                    >
-                      <span className="flex items-center gap-2 text-xs text-muted">
-                        <span className="truncate font-semibold text-ink">{result.conversation_name}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="truncate">{result.is_side_node ? result.thread_title : "Main chat"}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="shrink-0">{result.role === "user" ? "You" : "Claude"}</span>
-                      </span>
-                      <span className="text-sm leading-snug text-ink">{highlight(result.snippet, query)}</span>
-                    </button>
-                  </li>
+            {!error && results !== null && results.results.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {results.chats.map((chat) => (
+                  <ChatGroup
+                    key={chat.conversation_id}
+                    chat={chat}
+                    matches={results.results.filter((item) => item.conversation_id === chat.conversation_id)}
+                    query={query}
+                    onPick={(result) => {
+                      close();
+                      onOpenResult(result);
+                    }}
+                  />
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </div>

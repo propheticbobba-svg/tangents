@@ -102,10 +102,18 @@ export type SearchResult = {
   snippet: string;
 };
 
+export type SearchChat = {
+  conversation_id: string;
+  conversation_name: string;
+  total: number;
+  latest_at: string;
+};
+
 export type SearchResponse = {
   query: string;
   results: SearchResult[];
   truncated: boolean;
+  chats: SearchChat[];
 };
 
 export type StreamingTurn = {

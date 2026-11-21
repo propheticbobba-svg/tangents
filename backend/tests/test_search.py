@@ -150,3 +150,42 @@ def test_results_are_capped_at_fifty_and_say_so(client):
     data = search(client, "banana")
     assert len(data["results"]) == 50
     assert data["truncated"] is True
+
+
+def test_chat_totals_count_every_match_even_past_the_row_cap(client):
+    _, center = new_conversation(client)
+    parent = None
+    for i in range(80):
+        parent = save(center, parent and parent["id"], "user", f"banana {i}")
+    data = search(client, "banana")
+    assert len(data["results"]) == 50
+    assert [c["total"] for c in data["chats"]] == [80]
+
+
+def test_totals_span_side_nodes_and_order_chats_by_count_then_newest(client):
+    conv_a, center_a = new_conversation(client)
+    a1 = save(center_a, None, "assistant", "melon one")
+    side = fork(client, a1["id"])
+    save(side, a1["id"], "user", "melon in a side node")
+    conv_b, center_b = new_conversation(client)
+    save(center_b, None, "user", "melon alone")
+    conv_c, center_c = new_conversation(client)
+    c1 = save(center_c, None, "user", "melon c1")
+    save(center_c, c1["id"], "user", "melon c2")
+    conv_d, center_d = new_conversation(client)
+    save(center_d, None, "user", "melon newest single")
+
+    chats = search(client, "melon")["chats"]
+    # a and c both have 2 (a counts its side node); c's newest match is newer.
+    assert [(c["conversation_id"], c["total"]) for c in chats] == [
+        (conv_c, 2),
+        (conv_a, 2),
+        (conv_d, 1),
+        (conv_b, 1),
+    ]
+    assert all({"conversation_name", "latest_at"} <= set(c) for c in chats)
+
+
+def test_chats_is_empty_when_nothing_matches(client):
+    new_conversation(client)
+    assert search(client, "nothing")["chats"] == []

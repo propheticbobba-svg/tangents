@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import * as api from "./api";
 import { App } from "./App";
 import { SearchBox } from "./SearchBox";
-import type { Message, SearchResult, Thread, ThreadView, Tree } from "./types";
+import type { Message, SearchChat, SearchResponse, SearchResult, Thread, ThreadView, Tree } from "./types";
 
 vi.mock("./api");
 const mocked = vi.mocked(api);
@@ -66,6 +66,27 @@ function result(overrides: Partial<SearchResult> = {}): SearchResult {
   };
 }
 
+/** A response whose chat totals default to the number of rows given. */
+function response(results: SearchResult[], totals: Record<string, number> = {}): SearchResponse {
+  const chats = new Map<string, SearchChat>();
+  for (const item of results) {
+    const chat = chats.get(item.conversation_id) ?? {
+      conversation_id: item.conversation_id,
+      conversation_name: item.conversation_name,
+      total: 0,
+      latest_at: item.created_at,
+    };
+    chat.total += 1;
+    chats.set(item.conversation_id, chat);
+  }
+  for (const [id, total] of Object.entries(totals)) {
+    const chat = chats.get(id);
+    if (chat) chat.total = total;
+  }
+  const ordered = [...chats.values()].sort((a, b) => b.total - a.total);
+  return { query: "", results, truncated: false, chats: ordered };
+}
+
 function thread(id: string, conversation: string, parent: string | null, title: string): Thread {
   return {
     id,
@@ -100,10 +121,8 @@ function openSearch() {
 
 describe("SearchBox", () => {
   it("lists matches with chat name, node, speaker and highlighted words", async () => {
-    mocked.searchMessages.mockResolvedValue({
-      query: "rust borrow",
-      truncated: false,
-      results: [
+    mocked.searchMessages.mockResolvedValue(
+      response([
         result(),
         result({
           message_id: "m2",
@@ -113,15 +132,16 @@ describe("SearchBox", () => {
           role: "assistant",
           snippet: "The borrow rules in Rust are strict.",
         }),
-      ],
-    });
+      ]),
+    );
     render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
     openSearch();
     typeQuery("rust borrow");
 
     const rows = await screen.findAllByRole("listitem");
     expect(rows).toHaveLength(2);
-    expect(within(rows[0]).getByText("Learning Rust")).toBeTruthy();
+    const group = screen.getByRole("region", { name: "Learning Rust" });
+    expect(within(group).getAllByRole("listitem")).toHaveLength(2);
     expect(within(rows[0]).getByText("Main chat")).toBeTruthy();
     expect(within(rows[0]).getByText("You")).toBeTruthy();
     expect(within(rows[1]).getByText("Lifetimes")).toBeTruthy();
@@ -133,7 +153,7 @@ describe("SearchBox", () => {
   });
 
   it("shows No matches when nothing is found", async () => {
-    mocked.searchMessages.mockResolvedValue({ query: "zzz", truncated: false, results: [] });
+    mocked.searchMessages.mockResolvedValue(response([]));
     render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
     openSearch();
     typeQuery("zzz");
@@ -153,6 +173,72 @@ describe("SearchBox", () => {
     expect(mocked.searchMessages).not.toHaveBeenCalled();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
     expect(screen.queryByText("No matches")).toBeNull();
+  });
+
+  it("shows each chat's match count and lists the chat with the most matches first", async () => {
+    mocked.searchMessages.mockResolvedValue(
+      response([
+        result({ conversation_id: "few", conversation_name: "Few chat", message_id: "f1" }),
+        result({ conversation_id: "many", conversation_name: "Many chat", message_id: "n1" }),
+        result({ conversation_id: "many", conversation_name: "Many chat", message_id: "n2" }),
+        result({ conversation_id: "many", conversation_name: "Many chat", message_id: "n3" }),
+      ]),
+    );
+    render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
+    openSearch();
+    typeQuery("rust");
+
+    await screen.findAllByRole("listitem");
+    const groups = screen.getAllByRole("region");
+    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Many chat", "Few chat"]);
+    expect(within(groups[0]).getByTestId("chat-count").textContent).toBe("3");
+    expect(within(groups[1]).getByTestId("chat-count").textContent).toBe("1");
+  });
+
+  it("groups side node matches under the chat they belong to", async () => {
+    mocked.searchMessages.mockResolvedValue(
+      response([
+        result({ message_id: "c1" }),
+        result({ message_id: "s1", thread_id: "side-1", thread_title: "Lifetimes", is_side_node: true }),
+      ]),
+    );
+    render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
+    openSearch();
+    typeQuery("rust");
+
+    await screen.findAllByRole("listitem");
+    const groups = screen.getAllByRole("region");
+    expect(groups).toHaveLength(1);
+    expect(within(groups[0]).getByText("Lifetimes")).toBeTruthy();
+    expect(within(groups[0]).getByText("Main chat")).toBeTruthy();
+    expect(within(groups[0]).getByTestId("chat-count").textContent).toBe("2");
+  });
+
+  it("shows the full total and a Showing note when a chat has more matches than are listed", async () => {
+    mocked.searchMessages.mockResolvedValue(
+      response(
+        [result({ message_id: "a" }), result({ message_id: "b" }), result({ message_id: "c" })],
+        { "conv-1": 80 },
+      ),
+    );
+    render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
+    openSearch();
+    typeQuery("rust");
+
+    await screen.findAllByRole("listitem");
+    const group = screen.getByRole("region", { name: "Learning Rust" });
+    expect(within(group).getByTestId("chat-count").textContent).toBe("80");
+    expect(within(group).getByText("Showing 3 of 80")).toBeTruthy();
+  });
+
+  it("shows no Showing note when every match is listed", async () => {
+    mocked.searchMessages.mockResolvedValue(response([result()]));
+    render(<SearchBox disabled={false} onOpenResult={vi.fn()} />);
+    openSearch();
+    typeQuery("rust");
+
+    await screen.findAllByRole("listitem");
+    expect(screen.queryByText(/Showing/)).toBeNull();
   });
 
   it("is disabled while a reply is streaming", () => {
@@ -213,10 +299,8 @@ describe("Search inside the app", () => {
   }
 
   it("clicking a match in another chat opens that chat with its side node active", async () => {
-    mocked.searchMessages.mockResolvedValue({
-      query: "moons",
-      truncated: false,
-      results: [
+    mocked.searchMessages.mockResolvedValue(
+      response([
         result({
           conversation_id: "conv-2",
           conversation_name: "Second chat",
@@ -225,12 +309,12 @@ describe("Search inside the app", () => {
           is_side_node: true,
           snippet: "moons are interesting",
         }),
-      ],
-    });
+      ]),
+    );
     await renderApp();
     openSearch();
     typeQuery("moons");
-    fireEvent.click(await screen.findByRole("button", { name: /Second chat/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Tangent on moons/ }));
 
     expect(await screen.findByText("moons are interesting", { selector: "p, div, span" })).toBeTruthy();
     expect(mocked.getTree).toHaveBeenCalledWith("conv-2");
@@ -255,7 +339,7 @@ describe("Search inside the app", () => {
   });
 
   it("Esc closes the search without changing the open chat", async () => {
-    mocked.searchMessages.mockResolvedValue({ query: "x", truncated: false, results: [result()] });
+    mocked.searchMessages.mockResolvedValue(response([result()]));
     await renderApp();
     openSearch();
     typeQuery("x");
