@@ -16,7 +16,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     goal TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    favorite INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -100,6 +101,15 @@ def migrate_threads_sketch(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_conversations_favorite(conn: sqlite3.Connection) -> None:
+    """Add conversations.favorite on databases created before the column existed."""
+    columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
+    if any(row["name"] == "favorite" for row in columns):
+        return
+    conn.execute("ALTER TABLE conversations ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+    conn.commit()
+
+
 def init_db() -> None:
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +117,7 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA)
         migrate_threads_sketch(conn)
+        migrate_conversations_favorite(conn)
         conn.commit()
     finally:
         conn.close()
@@ -150,6 +161,7 @@ def _conversation_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "goal": row["goal"],
         "created_at": row["created_at"],
+        "favorite": bool(row["favorite"]),
     }
 
 
@@ -199,12 +211,27 @@ def create_conversation(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def list_conversations(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "SELECT * FROM conversations ORDER BY created_at DESC"
+        """
+        SELECT c.*,
+               COALESCE(
+                   (SELECT MAX(m.created_at) FROM messages m
+                    JOIN threads t ON t.id = m.thread_id
+                    WHERE t.conversation_id = c.id),
+                   c.created_at
+               ) AS last_used_at,
+               (SELECT COUNT(*) FROM threads t
+                WHERE t.conversation_id = c.id AND t.parent_thread_id IS NOT NULL
+               ) AS side_chat_count
+        FROM conversations c
+        ORDER BY c.favorite DESC, last_used_at DESC, c.created_at DESC, c.id DESC
+        """
     ).fetchall()
     conversations = []
     for row in rows:
         conversation = _conversation_from_row(row)
         conversation["goal_snippet"] = snippet(conversation["goal"], 80)
+        conversation["last_used_at"] = row["last_used_at"]
+        conversation["side_chat_count"] = row["side_chat_count"]
         conversations.append(conversation)
     return conversations
 
@@ -226,6 +253,19 @@ def update_goal(conn: sqlite3.Connection, conversation_id: str, goal: str) -> di
     conn.execute(
         "UPDATE conversations SET goal = ? WHERE id = ?",
         (goal, conversation_id),
+    )
+    conn.commit()
+    return get_conversation(conn, conversation_id)
+
+
+def set_favorite(
+    conn: sqlite3.Connection, conversation_id: str, favorite: bool
+) -> dict[str, Any] | None:
+    if get_conversation(conn, conversation_id) is None:
+        return None
+    conn.execute(
+        "UPDATE conversations SET favorite = ? WHERE id = ?",
+        (1 if favorite else 0, conversation_id),
     )
     conn.commit()
     return get_conversation(conn, conversation_id)
