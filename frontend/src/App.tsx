@@ -9,11 +9,13 @@ import {
   getTree,
   listConversations,
   listDocuments,
+  setFavorite,
   streamMessage,
   updateGoal,
   uploadDocument,
 } from "./api";
 import { ChatPane } from "./ChatPane";
+import { ChatsMenu, UNTITLED_CHAT, sortChats } from "./ChatsMenu";
 import { appendDictation, emptyDraft, isDraftEmpty, serializeDraft, textDraft, type Draft } from "./draft";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { MicButton, type DictationPhase } from "./MicButton";
@@ -80,9 +82,6 @@ function ToggleDot({ on }: { on: boolean }) {
   );
 }
 
-/** A chat with no first message yet has no goal to name it by. */
-const UNTITLED_CHAT = "Untitled";
-
 export function App() {
   const { resolved, toggle } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -109,7 +108,7 @@ export function App() {
   const [indexing, setIndexing] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [chatsError, setChatsError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => clampSidebarWidth(loadSidebarWidth()));
   const asideRef = useRef<HTMLElement>(null);
 
@@ -129,21 +128,29 @@ export function App() {
     setView(nextThread ? await getMessages(nextThread) : null);
   }
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+  function changeMenuOpen(open: boolean) {
+    setMenuOpen(open);
+    if (!open) return;
+    setChatsError(null);
+    // Fresh list (times, order, counts) every time the menu opens; keep the old one on failure.
+    void listConversations()
+      .then(setConversations)
+      .catch(() => undefined);
+  }
+
+  async function toggleFavourite(id: string, favorite: boolean) {
+    const previous = conversations;
+    setChatsError(null);
+    setConversations(sortChats(previous.map((item) => (item.id === id ? { ...item, favorite } : item))));
+    try {
+      await setFavorite(id, favorite);
+    } catch {
+      setConversations((list) =>
+        sortChats(list.map((item) => (item.id === id ? { ...item, favorite: !favorite } : item))),
+      );
+      setChatsError("Couldn't save that favourite");
     }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuOpen]);
+  }
 
   useEffect(() => {
     function onResize() {
@@ -461,70 +468,17 @@ export function App() {
           <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-accent" />
           Tangents
         </span>
-        <div className="min-w-0 md:relative" ref={menuRef}>
-          <button
-            type="button"
-            disabled={sending || conversations.length === 0}
-            aria-haspopup="listbox"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-            className="btn-ghost glow-ring shrink-0 max-md:min-h-11"
-          >
-            Chats
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-              className={`transition-transform ${menuOpen ? "rotate-180" : ""}`}
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <ul
-              role="listbox"
-              aria-label="Conversations"
-              className="glass fade-in absolute inset-x-3 top-full z-20 mt-2 max-h-72 overflow-y-auto md:inset-x-auto md:left-0 md:w-80 rounded-2xl p-1.5 shadow-lg"
-            >
-              {conversations.map((conversation) => {
-                const label = conversation.goal_snippet || UNTITLED_CHAT;
-                const selected = conversation.id === conversationId;
-                return (
-                  <li
-                    key={conversation.id}
-                    className={`flex items-center gap-1 rounded-xl pr-1 hover:bg-user ${selected ? "bg-user" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      onClick={() => {
-                        setMenuOpen(false);
-                        void pickConversation(conversation.id);
-                      }}
-                      className={`glow-ring min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-left max-md:min-h-11 text-sm ${selected ? "font-semibold text-ink" : "text-muted hover:text-ink"}`}
-                    >
-                      {label}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${label}`}
-                      disabled={sending}
-                      onClick={() => void removeConversation(conversation.id)}
-                      className="glow-ring shrink-0 rounded-full px-2.5 py-1 text-xs max-md:min-h-11 font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"
-                    >
-                      Delete
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <ChatsMenu
+          conversations={conversations}
+          activeId={conversationId}
+          open={menuOpen}
+          onOpenChange={changeMenuOpen}
+          disabled={sending}
+          error={chatsError}
+          onPick={(id) => void pickConversation(id)}
+          onDelete={(id) => void removeConversation(id)}
+          onToggleFavourite={(id, favorite) => void toggleFavourite(id, favorite)}
+        />
         <SearchBox disabled={sending} onOpenResult={(result) => void openSearchResult(result)} />
         <button
           type="button"

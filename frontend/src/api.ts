@@ -55,6 +55,14 @@ export function updateGoal(id: string, goal: string): Promise<Conversation> {
   });
 }
 
+export function setFavorite(id: string, favorite: boolean): Promise<Conversation> {
+  return request(`/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ favorite }),
+  });
+}
+
 export function getTree(id: string): Promise<Tree> {
   return request(`/api/conversations/${id}/tree`);
 }
