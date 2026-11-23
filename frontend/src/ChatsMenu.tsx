@@ -36,7 +36,7 @@ function usedAt(chat: Conversation): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
-/** Favourites first, then the rest; each group most recently used first. Ties keep their order. */
+/** Pinned chats first, then the rest; each group most recently used first. Ties keep their order. */
 export function sortChats(list: Conversation[]): Conversation[] {
   return list
     .map((chat, index) => ({ chat, index }))
@@ -49,7 +49,7 @@ export function sortChats(list: Conversation[]): Conversation[] {
     .map(({ chat }) => chat);
 }
 
-function Star({ filled }: { filled: boolean }) {
+function Pin({ filled }: { filled: boolean }) {
   return (
     <svg
       width="16"
@@ -58,10 +58,12 @@ function Star({ filled }: { filled: boolean }) {
       fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
       strokeWidth="2"
+      strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z" />
+      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" />
+      <path d="M12 14v7" />
     </svg>
   );
 }
@@ -75,7 +77,7 @@ export function ChatsMenu({
   error,
   onPick,
   onDelete,
-  onToggleFavourite,
+  onTogglePin,
 }: {
   conversations: Conversation[];
   activeId: string | null;
@@ -85,7 +87,7 @@ export function ChatsMenu({
   error: string | null;
   onPick: (id: string) => void;
   onDelete: (id: string) => void;
-  onToggleFavourite: (id: string, favorite: boolean) => void;
+  onTogglePin: (id: string, favorite: boolean) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -150,12 +152,12 @@ export function ChatsMenu({
                 >
                   <button
                     type="button"
-                    aria-label={favorite ? `Remove ${label} from favourites` : `Add ${label} to favourites`}
+                    aria-label={favorite ? `Unpin ${label}` : `Pin ${label}`}
                     aria-pressed={favorite}
-                    onClick={() => onToggleFavourite(conversation.id, !favorite)}
+                    onClick={() => onTogglePin(conversation.id, !favorite)}
                     className={`glow-ring flex shrink-0 items-center justify-center rounded-full px-2.5 py-1 max-md:min-h-11 max-md:min-w-11 ${favorite ? "text-accent" : "text-muted hover:text-ink"}`}
                   >
-                    <Star filled={favorite} />
+                    <Pin filled={favorite} />
                   </button>
                   <button
                     type="button"

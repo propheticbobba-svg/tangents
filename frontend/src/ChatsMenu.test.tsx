@@ -89,7 +89,7 @@ function renderMenu(conversations: Conversation[], props: Partial<Parameters<typ
       error={null}
       onPick={vi.fn()}
       onDelete={vi.fn()}
-      onToggleFavourite={vi.fn()}
+      onTogglePin={vi.fn()}
       {...props}
     />,
   );
@@ -113,7 +113,7 @@ describe("formatting", () => {
     expect(sideChatLabel(4)).toBe("4 side chats");
   });
 
-  it("sorts favourites first, then by last used", () => {
+  it("sorts pinned first, then by last used", () => {
     const sorted = sortChats([
       chat("a", "A", { last_used_at: ago(3 * HOUR) }),
       chat("b", "B", { last_used_at: ago(HOUR), favorite: false }),
@@ -146,13 +146,13 @@ describe("ChatsMenu rows", () => {
     expect(screen.getByText(/No side chats/)).toBeTruthy();
   });
 
-  it("the star toggles without opening the chat or closing the menu", () => {
+  it("the pin toggles without opening the chat or closing the menu", () => {
     const onPick = vi.fn();
     const onOpenChange = vi.fn();
-    const onToggleFavourite = vi.fn();
-    renderMenu([chat("a", "Trip planning")], { onPick, onOpenChange, onToggleFavourite });
-    fireEvent.click(screen.getByRole("button", { name: "Add Trip planning to favourites" }));
-    expect(onToggleFavourite).toHaveBeenCalledWith("a", true);
+    const onTogglePin = vi.fn();
+    renderMenu([chat("a", "Trip planning")], { onPick, onOpenChange, onTogglePin });
+    fireEvent.click(screen.getByRole("button", { name: "Pin Trip planning" }));
+    expect(onTogglePin).toHaveBeenCalledWith("a", true);
     expect(onPick).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
@@ -211,7 +211,7 @@ describe("Chats menu inside the app", () => {
     return screen.getAllByRole("option").map((option) => option.textContent ?? "");
   }
 
-  it("starring a chat fills the star and moves it to the top without changing the open chat", async () => {
+  it("pinning a chat marks it pinned and moves it to the top without changing the open chat", async () => {
     setup([newer(), older()]);
     mocked.setFavorite.mockResolvedValue({ ...older(), favorite: true });
     render(<App />);
@@ -219,12 +219,12 @@ describe("Chats menu inside the app", () => {
     await openMenu();
     mocked.getTree.mockClear();
 
-    const star = screen.getByRole("button", { name: "Add Older chat to favourites" });
+    const star = screen.getByRole("button", { name: "Pin Older chat" });
     fireEvent.click(star);
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Remove Older chat from favourites" }).getAttribute("aria-pressed"),
+        screen.getByRole("button", { name: "Unpin Older chat" }).getAttribute("aria-pressed"),
       ).toBe("true"),
     );
     expect(mocked.setFavorite).toHaveBeenCalledWith("old", true);
@@ -236,18 +236,18 @@ describe("Chats menu inside the app", () => {
     expect(screen.getByText("hello from Newest chat")).toBeTruthy();
   });
 
-  it("unstarring a chat moves it back among the others by last used", async () => {
+  it("unpinning a chat moves it back among the others by last used", async () => {
     setup([older, newer].map((make) => make()).map((item) => (item.id === "old" ? { ...item, favorite: true } : item)));
     mocked.setFavorite.mockResolvedValue(older());
     render(<App />);
     await openMenu();
     expect(order()[0]).toContain("Older chat");
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove Older chat from favourites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin Older chat" }));
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Add Older chat to favourites" }).getAttribute("aria-pressed"),
+        screen.getByRole("button", { name: "Pin Older chat" }).getAttribute("aria-pressed"),
       ).toBe("false"),
     );
     expect(mocked.setFavorite).toHaveBeenCalledWith("old", false);
@@ -255,7 +255,7 @@ describe("Chats menu inside the app", () => {
     expect(order()[1]).toContain("Older chat");
   });
 
-  it("favourites from the server are starred and on top after a reload", async () => {
+  it("pinned chats from the server are pinned and on top after a reload", async () => {
     setup([{ ...older(), favorite: true }, newer()]);
     const first = render(<App />);
     await openMenu();
@@ -266,22 +266,22 @@ describe("Chats menu inside the app", () => {
     await openMenu();
     expect(order()[0]).toContain("Older chat");
     expect(
-      screen.getByRole("button", { name: "Remove Older chat from favourites" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Unpin Older chat" }).getAttribute("aria-pressed"),
     ).toBe("true");
   });
 
-  it("puts the star back and shows an error when the favourite can't be saved", async () => {
+  it("puts the pin back and shows an error when the pin can't be saved", async () => {
     setup([newer(), older()]);
     mocked.setFavorite.mockRejectedValue(new Error("down"));
     render(<App />);
     await openMenu();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Older chat to favourites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pin Older chat" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Couldn't save that favourite");
+    expect(alert.textContent).toBe("Couldn't save that pin");
     expect(
-      screen.getByRole("button", { name: "Add Older chat to favourites" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Pin Older chat" }).getAttribute("aria-pressed"),
     ).toBe("false");
     expect(order()[0]).toContain("Newest chat");
   });

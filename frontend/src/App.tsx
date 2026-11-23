@@ -138,7 +138,7 @@ export function App() {
       .catch(() => undefined);
   }
 
-  async function toggleFavourite(id: string, favorite: boolean) {
+  async function togglePin(id: string, favorite: boolean) {
     const previous = conversations;
     setChatsError(null);
     setConversations(sortChats(previous.map((item) => (item.id === id ? { ...item, favorite } : item))));
@@ -148,7 +148,7 @@ export function App() {
       setConversations((list) =>
         sortChats(list.map((item) => (item.id === id ? { ...item, favorite: !favorite } : item))),
       );
-      setChatsError("Couldn't save that favourite");
+      setChatsError("Couldn't save that pin");
     }
   }
 
@@ -477,7 +477,7 @@ export function App() {
           error={chatsError}
           onPick={(id) => void pickConversation(id)}
           onDelete={(id) => void removeConversation(id)}
-          onToggleFavourite={(id, favorite) => void toggleFavourite(id, favorite)}
+          onTogglePin={(id, favorite) => void togglePin(id, favorite)}
         />
         <SearchBox disabled={sending} onOpenResult={(result) => void openSearchResult(result)} />
         <button
