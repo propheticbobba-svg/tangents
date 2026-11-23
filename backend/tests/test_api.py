@@ -906,3 +906,129 @@ def test_learning_map_lists_sibling_sketches_without_their_messages(client, monk
     failed = client.get(f"/api/threads/{failed_center}/messages").json()
     assert failed["messages"] == []
     assert failed["thread"]["sketch"] is None
+
+
+def _listed(client: TestClient) -> dict:
+    return {item["id"]: item for item in client.get("/api/conversations").json()}
+
+
+def _set_times(created_at: str, conversation_id: str | None = None, message_id: str | None = None):
+    conn = connect()
+    try:
+        if conversation_id:
+            conn.execute(
+                "UPDATE conversations SET created_at = ? WHERE id = ?",
+                (created_at, conversation_id),
+            )
+        if message_id:
+            conn.execute(
+                "UPDATE messages SET created_at = ? WHERE id = ?", (created_at, message_id)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_chat_list_last_used_at_counts_nested_side_chat_messages(client: TestClient):
+    empty_id, _ = create_conversation(client)
+    chat_id, center_id = create_conversation(client)
+    root = _save(center_id, None, "assistant", "root answer")
+    side = client.post("/api/threads", json={"fork_message_id": root["id"]}).json()
+    side_answer = _save(side["id"], root["id"], "assistant", "side answer")
+    nested = client.post("/api/threads", json={"fork_message_id": side_answer["id"]}).json()
+    deep = _save(nested["id"], side_answer["id"], "user", "deep question")
+    _set_times("2030-01-01T00:00:00+00:00", message_id=root["id"])
+    _set_times("2030-01-02T00:00:00+00:00", message_id=side_answer["id"])
+    _set_times("2030-01-03T00:00:00+00:00", message_id=deep["id"])
+
+    listed = _listed(client)
+    assert listed[chat_id]["last_used_at"] == "2030-01-03T00:00:00+00:00"
+    assert listed[empty_id]["last_used_at"] == listed[empty_id]["created_at"]
+
+
+def test_chat_list_counts_side_chats_at_any_depth(client: TestClient):
+    chat_id, center_id = create_conversation(client)
+    assert _listed(client)[chat_id]["side_chat_count"] == 0
+    root = _save(center_id, None, "assistant", "root answer")
+    side_a = client.post("/api/threads", json={"fork_message_id": root["id"]}).json()
+    client.post("/api/threads", json={"fork_message_id": root["id"]})
+    answer = _save(side_a["id"], root["id"], "assistant", "a answer")
+    nested = client.post("/api/threads", json={"fork_message_id": answer["id"]}).json()
+    assert _listed(client)[chat_id]["side_chat_count"] == 3
+    assert client.delete(f"/api/threads/{nested['id']}").status_code == 204
+    assert _listed(client)[chat_id]["side_chat_count"] == 2
+
+
+def test_favorite_mark_survives_restart_and_can_be_cleared(client: TestClient):
+    chat_id, _ = create_conversation(client)
+    assert _listed(client)[chat_id]["favorite"] is False
+    response = client.patch(f"/api/conversations/{chat_id}", json={"favorite": True})
+    assert response.status_code == 200
+    assert response.json()["favorite"] is True
+    assert _listed(client)[chat_id]["favorite"] is True
+
+    from app.main import app
+
+    with TestClient(app) as restarted:
+        assert _listed(restarted)[chat_id]["favorite"] is True
+        cleared = restarted.patch(f"/api/conversations/{chat_id}", json={"favorite": False})
+        assert cleared.status_code == 200
+        assert _listed(restarted)[chat_id]["favorite"] is False
+
+
+def test_old_database_without_favorite_column_is_migrated(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE conversations (id TEXT PRIMARY KEY, goal TEXT, created_at TEXT NOT NULL)")
+    old.execute("INSERT INTO conversations VALUES ('old', 'Old goal', '2020-01-01T00:00:00+00:00')")
+    old.commit()
+    old.close()
+    monkeypatch.setenv("TANGENTS_DB", str(path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "")
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        listed = test_client.get("/api/conversations").json()
+    assert [item["id"] for item in listed] == ["old"]
+    assert listed[0]["favorite"] is False
+
+
+def test_chat_list_orders_favorites_first_then_most_recently_used(client: TestClient):
+    (a, a_center), (b, _), (c, _), (d, _) = [create_conversation(client) for _ in range(4)]
+    for index, conversation_id in enumerate([a, b, c, d]):
+        _set_times(f"2020-01-0{index + 1}T00:00:00+00:00", conversation_id=conversation_id)
+    # Usage, newest first: a (via a message), d, c, b. Favourites: b and c.
+    message = _save(a_center, None, "user", "recent")
+    _set_times("2031-01-01T00:00:00+00:00", message_id=message["id"])
+    client.patch(f"/api/conversations/{b}", json={"favorite": True})
+    client.patch(f"/api/conversations/{c}", json={"favorite": True})
+    order = [item["id"] for item in client.get("/api/conversations").json()]
+    assert order == [c, b, a, d]
+
+
+def test_favorite_and_goal_updates_leave_each_other_alone(client: TestClient):
+    chat_id, _ = create_conversation(client)
+    client.patch(f"/api/conversations/{chat_id}", json={"goal": "My goal"})
+    fav = client.patch(f"/api/conversations/{chat_id}", json={"favorite": True}).json()
+    assert fav["goal"] == "My goal"
+    assert fav["favorite"] is True
+    edited = client.patch(f"/api/conversations/{chat_id}", json={"goal": "New goal"}).json()
+    assert edited["goal"] == "New goal"
+    assert edited["favorite"] is True
+    assert _listed(client)[chat_id]["favorite"] is True
+
+
+def test_favorite_on_missing_chat_is_404_and_bad_values_change_nothing(client: TestClient):
+    missing = client.patch("/api/conversations/nope", json={"favorite": True})
+    assert missing.status_code == 404
+    chat_id, _ = create_conversation(client)
+    client.patch(f"/api/conversations/{chat_id}", json={"goal": "Keep me"})
+    for bad in ("yes", 1, "true", None):
+        response = client.patch(f"/api/conversations/{chat_id}", json={"favorite": bad})
+        assert 400 <= response.status_code < 500
+    after = _listed(client)[chat_id]
+    assert after["favorite"] is False
+    assert after["goal"] == "Keep me"

@@ -17,7 +17,7 @@ from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 from app import mathspeech, speech
 
@@ -41,6 +41,7 @@ from app.db import (
     note_user_message,
     rename_thread,
     search_messages,
+    set_favorite,
     set_thread_sketch,
     short_title,
     text_of,
@@ -92,8 +93,9 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title="Tangents", lifespan=_lifespan)
 
 
-class GoalUpdate(BaseModel):
-    goal: str
+class ConversationUpdate(BaseModel):
+    goal: str | None = None
+    favorite: StrictBool | None = None
 
 
 class NewMessage(BaseModel):
@@ -222,12 +224,19 @@ def remove_conversation(conversation_id: str) -> None:
 
 
 @app.patch("/api/conversations/{conversation_id}")
-def patch_conversation(conversation_id: str, body: GoalUpdate) -> dict:
+def patch_conversation(conversation_id: str, body: ConversationUpdate) -> dict:
+    sent = body.model_fields_set
+    if not sent or any(getattr(body, name) is None for name in sent):
+        raise HTTPException(status_code=422, detail="Send a goal and/or a true/false favorite")
     conn = connect()
     try:
-        conversation = update_goal(conn, conversation_id, body.goal)
+        conversation = get_conversation(conn, conversation_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        if "goal" in sent:
+            conversation = update_goal(conn, conversation_id, body.goal)
+        if "favorite" in sent:
+            conversation = set_favorite(conn, conversation_id, body.favorite)
         return conversation
     finally:
         conn.close()

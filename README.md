@@ -123,10 +123,10 @@ Stored messages are not edited or deleted, except the user message of a turn tha
 
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
-| `GET` | `/api/conversations` | | Conversations, newest first, each with `goal_snippet`. |
+| `GET` | `/api/conversations` | | Conversations, each with `goal_snippet`, `favorite`, `last_used_at` (newest message in any node at any depth, or the creation time when there are none) and `side_chat_count` (every node except the center). Favourites first, then the rest; each group most recently used first. |
 | `POST` | `/api/conversations` | | Creates a conversation and its empty center node. |
 | `GET` | `/api/search?q=` | | Messages (user and assistant text only; never thinking, document passages or web results) containing every word of `q`, any order, any case. Returns `{query, results, truncated, chats}`; up to 50 results, newest first, `truncated` true if more were cut. `chats` has one entry for every chat with a match (`conversation_id`, `conversation_name`, `total`, `latest_at`): `total` counts all of that chat's matches across its nodes, past the 50-result cap, and entries are ordered by `total` descending, ties newest match first. Each result: `conversation_id`, `conversation_name`, `thread_id`, `thread_title`, `is_side_node`, `message_id`, `role`, `created_at`, `snippet` (~160 characters around the first word). 400 if `q` is blank. |
-| `PATCH` | `/api/conversations/{id}` | `{goal}` | Sets the pinned goal. |
+| `PATCH` | `/api/conversations/{id}` | `{goal?, favorite?}` | Sets the pinned goal and/or the favourite mark (`true`/`false` only). Each field only changes when sent. 404 for an unknown chat, 422 for an empty body or a bad value. |
 | `GET` | `/api/conversations/{id}/tree` | | `goal` plus every thread: `parent_thread_id`, `fork_message_id`, `title`, `fork_snippet` (~120 characters of the fork-point text), `fork_position` (0-based index of the fork message in the parent thread). |
 | `GET` | `/api/threads/{id}/messages` | | The thread's own messages, the fork-point message (`forked_from`), and `ancestry` from the center node to this thread. |
 | `POST` | `/api/threads` | `{fork_message_id}` | Creates a side node. The fork point must be an assistant message. |
