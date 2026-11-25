@@ -82,6 +82,9 @@ export type Conversation = {
   goal_snippet: string | null;
   created_at: string;
   center_thread_id?: string;
+  favorite?: boolean;
+  last_used_at?: string;
+  side_chat_count?: number;
 };
 
 export type Tree = {

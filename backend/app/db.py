@@ -213,11 +213,13 @@ def list_conversations(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT c.*,
-               COALESCE(
-                   (SELECT MAX(m.created_at) FROM messages m
-                    JOIN threads t ON t.id = m.thread_id
-                    WHERE t.conversation_id = c.id),
-                   c.created_at
+               MAX(
+                   c.created_at,
+                   COALESCE((SELECT MAX(m.created_at) FROM messages m
+                             JOIN threads t ON t.id = m.thread_id
+                             WHERE t.conversation_id = c.id), c.created_at),
+                   COALESCE((SELECT MAX(t.created_at) FROM threads t
+                             WHERE t.conversation_id = c.id), c.created_at)
                ) AS last_used_at,
                (SELECT COUNT(*) FROM threads t
                 WHERE t.conversation_id = c.id AND t.parent_thread_id IS NOT NULL
