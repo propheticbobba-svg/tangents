@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS chunks (
     embedding BLOB NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bookmarks (
+    message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_documents_conversation ON documents(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_conversation ON chunks(conversation_id);
 
@@ -299,6 +304,17 @@ def delete_conversation(conn: sqlite3.Connection, conversation_id: str) -> bool:
     )
     conn.execute(
         """
+        DELETE FROM bookmarks
+        WHERE message_id IN (
+            SELECT m.id FROM messages m
+            JOIN threads t ON t.id = m.thread_id
+            WHERE t.conversation_id = ?
+        )
+        """,
+        (conversation_id,),
+    )
+    conn.execute(
+        """
         DELETE FROM messages
         WHERE thread_id IN (SELECT id FROM threads WHERE conversation_id = ?)
         """,
@@ -352,6 +368,13 @@ def delete_thread(conn: sqlite3.Connection, thread_id: str) -> bool | None:
         UPDATE messages
         SET parent_id = NULL
         WHERE thread_id IN ({placeholders})
+        """,
+        ids,
+    )
+    conn.execute(
+        f"""
+        DELETE FROM bookmarks
+        WHERE message_id IN (SELECT id FROM messages WHERE thread_id IN ({placeholders}))
         """,
         ids,
     )
@@ -494,8 +517,68 @@ def insert_message(
 
 
 def delete_message(conn: sqlite3.Connection, message_id: str) -> None:
+    conn.execute("DELETE FROM bookmarks WHERE message_id = ?", (message_id,))
     conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
     conn.commit()
+
+
+def add_bookmark(conn: sqlite3.Connection, message_id: str) -> bool:
+    """Bookmark a message. Doing it twice keeps one bookmark. False if no such message."""
+    if get_message(conn, message_id) is None:
+        return False
+    conn.execute(
+        "INSERT OR IGNORE INTO bookmarks (message_id, created_at) VALUES (?, ?)",
+        (message_id, now()),
+    )
+    conn.commit()
+    return True
+
+
+def remove_bookmark(conn: sqlite3.Connection, message_id: str) -> None:
+    conn.execute("DELETE FROM bookmarks WHERE message_id = ?", (message_id,))
+    conn.commit()
+
+
+def bookmarked_ids(conn: sqlite3.Connection, thread_id: str) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT b.message_id FROM bookmarks b
+        JOIN messages m ON m.id = b.message_id
+        WHERE m.thread_id = ?
+        """,
+        (thread_id,),
+    ).fetchall()
+    return {row["message_id"] for row in rows}
+
+
+def list_bookmarks(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]] | None:
+    """One chat's bookmarks across its center and side nodes, oldest message first."""
+    if get_conversation(conn, conversation_id) is None:
+        return None
+    rows = conn.execute(
+        """
+        SELECT m.id AS message_id, m.role, m.content, m.created_at,
+               t.id AS thread_id, t.title, t.parent_thread_id
+        FROM bookmarks b
+        JOIN messages m ON m.id = b.message_id
+        JOIN threads t ON t.id = m.thread_id
+        WHERE t.conversation_id = ?
+        ORDER BY m.created_at ASC, m.id ASC
+        """,
+        (conversation_id,),
+    ).fetchall()
+    return [
+        {
+            "message_id": row["message_id"],
+            "thread_id": row["thread_id"],
+            "thread_title": row["title"],
+            "is_side_node": row["parent_thread_id"] is not None,
+            "role": row["role"],
+            "snippet": snippet(text_of(json.loads(row["content"])), 160) or "",
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
 
 
 def rename_thread(conn: sqlite3.Connection, thread_id: str, title: str) -> None:
@@ -541,9 +624,16 @@ def thread_view(conn: sqlite3.Connection, thread: dict[str, Any]) -> dict[str, A
     view = dict(thread)
     view["fork_snippet"] = fork_snippet
     view["fork_position"] = fork_position(conn, thread)
+    marked = bookmarked_ids(conn, thread["id"])
+    messages = [{**m, "bookmarked": m["id"] in marked} for m in messages_in_thread(conn, thread["id"])]
+    if forked_from is not None:
+        forked_from = {
+            **forked_from,
+            "bookmarked": forked_from["id"] in bookmarked_ids(conn, forked_from["thread_id"]),
+        }
     return {
         "thread": view,
-        "messages": messages_in_thread(conn, thread["id"]),
+        "messages": messages,
         "forked_from": forked_from,
         "ancestry": ancestry(conn, thread),
     }
