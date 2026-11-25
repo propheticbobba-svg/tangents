@@ -255,6 +255,31 @@ describe("Chats menu inside the app", () => {
     expect(order()[1]).toContain("Older chat");
   });
 
+  it("a list refresh that started before a pin was pressed does not undo the pin", async () => {
+    setup([newer(), older()]);
+    render(<App />);
+    await screen.findByText("hello from Newest chat");
+
+    // The refresh opened with the menu answers late, with the list as it was before the pin.
+    let answerStale: (list: Conversation[]) => void = () => undefined;
+    mocked.listConversations.mockReturnValueOnce(
+      new Promise<Conversation[]>((resolve) => {
+        answerStale = resolve;
+      }),
+    );
+    mocked.setFavorite.mockResolvedValue(undefined as never);
+    await openMenu();
+    fireEvent.click(screen.getByRole("button", { name: "Pin Older chat" }));
+    await waitFor(() => expect(mocked.setFavorite).toHaveBeenCalled());
+    answerStale([newer(), older()]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(
+      screen.getByRole("button", { name: "Unpin Older chat" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(order()[0]).toContain("Older chat");
+  });
+
   it("pinned chats from the server are pinned and on top after a reload", async () => {
     setup([{ ...older(), favorite: true }, newer()]);
     const first = render(<App />);

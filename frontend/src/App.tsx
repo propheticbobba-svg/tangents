@@ -129,14 +129,19 @@ export function App() {
   }
 
   const pinSaving = useRef(false);
+  // Bumped whenever a pin starts or finishes saving; a list fetched across a bump may be stale.
+  const pinVersion = useRef(0);
 
   function changeMenuOpen(open: boolean) {
     setMenuOpen(open);
     if (!open) return;
     setChatsError(null);
     // Fresh list (times, order, counts) every time the menu opens; keep the old one on failure.
+    const startedAt = pinVersion.current;
     void listConversations()
-      .then(setConversations)
+      .then((list) => {
+        if (pinVersion.current === startedAt && !pinSaving.current) setConversations(list);
+      })
       .catch(() => undefined);
   }
 
@@ -144,6 +149,7 @@ export function App() {
     // The list re-sorts at once, so a quick second click lands on another chat: ignore it until saved.
     if (pinSaving.current) return;
     pinSaving.current = true;
+    pinVersion.current += 1;
     const previous = conversations;
     setChatsError(null);
     setConversations(sortChats(previous.map((item) => (item.id === id ? { ...item, favorite } : item))));
@@ -156,6 +162,7 @@ export function App() {
       setChatsError("Couldn't save that pin");
     } finally {
       pinSaving.current = false;
+      pinVersion.current += 1;
     }
   }
 
