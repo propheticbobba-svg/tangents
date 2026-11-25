@@ -16,17 +16,39 @@ const names = [
 ];
 
 let output = "";
+let startProblem = "";
 
 describe("backend bookmarks (pytest)", () => {
   beforeAll(() => {
     const backend = path.resolve(process.cwd(), "..", "backend");
     // The venv is not in git: a fresh worktree has none, so fall back to the
-    // main checkout's venv (worktrees live in <main>/.claude/worktrees/<name>).
+    // main checkout's venv (worktrees live in <main>/.claude/worktrees/<name>),
+    // then to python3. Each candidate must be able to import the backend packages.
     const candidates = [
       path.join(backend, ".venv", "bin", "python"),
       path.resolve(backend, "..", "..", "..", "..", "backend", ".venv", "bin", "python"),
+      "python3",
     ];
-    const py = candidates.find((c) => existsSync(c)) ?? "python3";
+    const tried: string[] = [];
+    let py = "";
+    for (const c of candidates) {
+      if (c.includes(path.sep) && !existsSync(c)) {
+        tried.push(`${c} (not found)`);
+        continue;
+      }
+      const probe = spawnSync(c, ["-c", "import pytest, fastapi, httpx"], { cwd: backend, encoding: "utf8" });
+      if (probe.status === 0) {
+        py = c;
+        break;
+      }
+      tried.push(`${c} (cannot import pytest, fastapi and httpx)`);
+    }
+    if (!py) {
+      startProblem =
+        `Could not start pytest: no Python with the backend packages was found. Tried: ${tried.join("; ")}. ` +
+        `Create the environment with: cd backend && uv sync`;
+      return;
+    }
     const r = spawnSync(py, ["-m", "pytest", "tests/test_bookmarks.py", "-v", "-p", "no:cacheprovider"], {
       cwd: backend,
       encoding: "utf8",
@@ -36,6 +58,7 @@ describe("backend bookmarks (pytest)", () => {
 
   for (const name of names) {
     it(name, () => {
+      expect(startProblem, startProblem).toBe("");
       expect(output).toMatch(new RegExp(`::${name} PASSED`));
     }, 10_000);
   }
