@@ -1,6 +1,7 @@
 // Runs the backend bookmark tests (backend/tests/test_bookmarks.py) so that
 // `npm test` covers them. Each backend test is reported here under its own name.
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -19,7 +20,13 @@ let output = "";
 describe("backend bookmarks (pytest)", () => {
   beforeAll(() => {
     const backend = path.resolve(process.cwd(), "..", "backend");
-    const py = path.join(backend, ".venv", "bin", "python");
+    // The venv is not in git: a fresh worktree has none, so fall back to the
+    // main checkout's venv (worktrees live in <main>/.claude/worktrees/<name>).
+    const candidates = [
+      path.join(backend, ".venv", "bin", "python"),
+      path.resolve(backend, "..", "..", "..", "..", "backend", ".venv", "bin", "python"),
+    ];
+    const py = candidates.find((c) => existsSync(c)) ?? "python3";
     const r = spawnSync(py, ["-m", "pytest", "tests/test_bookmarks.py", "-v", "-p", "no:cacheprovider"], {
       cwd: backend,
       encoding: "utf8",
