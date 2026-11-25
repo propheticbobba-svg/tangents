@@ -128,6 +128,8 @@ export function App() {
     setView(nextThread ? await getMessages(nextThread) : null);
   }
 
+  const pinSaving = useRef(false);
+
   function changeMenuOpen(open: boolean) {
     setMenuOpen(open);
     if (!open) return;
@@ -139,6 +141,9 @@ export function App() {
   }
 
   async function togglePin(id: string, favorite: boolean) {
+    // The list re-sorts at once, so a quick second click lands on another chat: ignore it until saved.
+    if (pinSaving.current) return;
+    pinSaving.current = true;
     const previous = conversations;
     setChatsError(null);
     setConversations(sortChats(previous.map((item) => (item.id === id ? { ...item, favorite } : item))));
@@ -149,6 +154,8 @@ export function App() {
         sortChats(list.map((item) => (item.id === id ? { ...item, favorite: !favorite } : item))),
       );
       setChatsError("Couldn't save that pin");
+    } finally {
+      pinSaving.current = false;
     }
   }
 
