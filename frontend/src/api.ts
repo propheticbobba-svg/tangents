@@ -1,4 +1,4 @@
-import type { Conversation, DocumentInfo, Message, SearchResponse, Thread, ThreadView, Tree, WebSource } from "./types";
+import type { Bookmark, Conversation, DocumentInfo, Message, SearchResponse, Thread, ThreadView, Tree, WebSource } from "./types";
 import type { SpokenPart } from "./draft";
 
 export type ChatEvent =
@@ -68,6 +68,10 @@ export async function setBookmark(messageId: string, bookmarked: boolean): Promi
     method: bookmarked ? "PUT" : "DELETE",
   });
   if (!response.ok) throw new Error(await errorMessage(response));
+}
+
+export function listBookmarks(conversationId: string, signal?: AbortSignal): Promise<Bookmark[]> {
+  return request(`/api/conversations/${conversationId}/bookmarks`, { signal });
 }
 
 export function getTree(id: string): Promise<Tree> {
