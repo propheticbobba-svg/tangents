@@ -24,6 +24,15 @@ The UI is at [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite proxies `/api`
 
 `get_context` walks `parent_id` back to the root. Three compaction cases in `backend/tests/test_context.py` are skipped, with `expected = ...  # TODO` still to fill in. A failed turn is rolled back, so the user message is not kept.
 
+## Tests
+
+```bash
+npm test                      # from the repo root
+cd frontend && npm test       # same thing, from the app folder
+```
+
+Both run the server's pytest suite (`backend/tests`) and the screen's vitest suite, each verbose so every test shows by name, and fail if either fails. The server tests run through `uv run`, which builds the Python environment from `backend/pyproject.toml` on the fly, so no `backend/.venv` is needed. If uv is missing and no Python with the backend packages is found, the run fails with setup steps (install uv, then `cd backend && uv sync`); it never passes without running the server tests. To run only the screen tests: `cd frontend && npm run test:ui`.
+
 ## Environment
 
 Copy `backend/.env.example` to `backend/.env`. The file is gitignored.

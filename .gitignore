@@ -10,3 +10,4 @@ frontend/dist/
 .DS_Store
 backend/.cache/
 backend/bench/results/
+backend/:memory:.ses

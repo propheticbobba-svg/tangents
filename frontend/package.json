@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run --reporter=verbose"
+    "test": "node ../scripts/run-tests.mjs",
+    "test:ui": "vitest run --reporter=verbose"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.13",

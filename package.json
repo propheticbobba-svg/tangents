@@ -1,0 +1,7 @@
+{
+  "name": "tangents",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/run-tests.mjs"
+  }
+}
