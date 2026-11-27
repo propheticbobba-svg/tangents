@@ -24,6 +24,9 @@ from app import mathspeech, speech
 from app.config import get_settings, load_settings
 from app.context import get_context
 from app.db import (
+    add_bookmark,
+    list_bookmarks,
+    remove_bookmark,
     center_thread,
     connect,
     create_conversation,
@@ -352,6 +355,38 @@ def get_messages(thread_id: str) -> dict:
         view["messages"] = [slim_message(message) for message in view["messages"]]
         view["forked_from"] = slim_message(view["forked_from"])
         return view
+    finally:
+        conn.close()
+
+
+@app.put("/api/messages/{message_id}/bookmark")
+def put_bookmark(message_id: str) -> dict:
+    conn = connect()
+    try:
+        if not add_bookmark(conn, message_id):
+            raise HTTPException(status_code=404, detail="Message not found")
+        return {"message_id": message_id, "bookmarked": True}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/messages/{message_id}/bookmark", status_code=204)
+def delete_bookmark(message_id: str) -> None:
+    conn = connect()
+    try:
+        remove_bookmark(conn, message_id)
+    finally:
+        conn.close()
+
+
+@app.get("/api/conversations/{conversation_id}/bookmarks")
+def get_bookmarks(conversation_id: str) -> list[dict]:
+    conn = connect()
+    try:
+        bookmarks = list_bookmarks(conn, conversation_id)
+        if bookmarks is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return bookmarks
     finally:
         conn.close()
 
