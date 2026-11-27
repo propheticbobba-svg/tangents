@@ -50,6 +50,7 @@ export type Message = {
   created_at: string;
   is_note: boolean;
   usage: Usage | null;
+  bookmarked?: boolean;
 };
 
 export type Thread = {

@@ -81,16 +81,55 @@ export function Markdown({
   );
 }
 
+function BookmarkButton({
+  bookmarked,
+  onToggle,
+}: {
+  bookmarked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={bookmarked}
+      aria-label={bookmarked ? "Remove bookmark" : "Bookmark this message"}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`glow-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors md:min-h-8 md:min-w-8 ${
+        bookmarked ? "text-accent" : "text-muted opacity-60 hover:text-ink hover:opacity-100"
+      }`}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        fill={bookmarked ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      >
+        <path d="M6 3h12v18l-6-4-6 4z" />
+      </svg>
+    </button>
+  );
+}
+
 export function MessageView({
   message,
   onFork,
   forkDisabled,
   onContinue,
+  onToggleBookmark,
 }: {
   message: ChatMessage;
   onFork: (messageId: string) => void;
   forkDisabled: boolean;
   onContinue?: () => void;
+  onToggleBookmark?: (messageId: string, bookmarked: boolean) => void;
 }) {
   const text = messageText(message.content);
   const thinking = thinkingText(message.content);
@@ -134,6 +173,14 @@ export function MessageView({
         {message.is_note && <div className="label mb-1">Note</div>}
         {text && <Markdown text={text} />}
       </div>
+      {onToggleBookmark && (
+        <div className={`mt-1 flex ${user ? "justify-end" : "justify-start"}`}>
+          <BookmarkButton
+            bookmarked={message.bookmarked === true}
+            onToggle={() => onToggleBookmark(message.id, message.bookmarked !== true)}
+          />
+        </div>
+      )}
       {message.role === "assistant" && stopReason === "max_tokens" && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <p className="text-[13px] text-muted">

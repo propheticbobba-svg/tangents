@@ -42,8 +42,10 @@ export function ChatPane({
   onFormulaMic,
   onComposerError,
   onContinue,
+  onToggleBookmark,
   jump = null,
 }: {
+  onToggleBookmark?: (messageId: string, bookmarked: boolean) => void;
   jump?: { messageId: string; nonce: number } | null;
   view: ThreadView | null;
   goal: string | null;
@@ -177,6 +179,7 @@ export function ChatPane({
               message={message}
               onFork={onFork}
               forkDisabled={sending}
+              onToggleBookmark={onToggleBookmark}
               onContinue={
                 !streaming && index === view.messages.length - 1 ? onContinue : undefined
               }

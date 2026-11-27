@@ -71,6 +71,51 @@ afterEach(() => {
 
 const article = (id: string) => document.querySelector(`[data-message-id="${id}"]`);
 
+describe("ChatPane bookmark buttons", () => {
+  const streamingTurn = {
+    text: "still writing",
+    summaries: [],
+    activity: [],
+    thinking: "",
+    thinkingStartedAt: null,
+    thinkingEndedAt: null,
+  };
+
+  it("has no bookmark button on a reply still being written", () => {
+    const small = { ...view, messages: [msg("m0")] } as unknown as ThreadView;
+    render(
+      <ChatPane
+        view={small}
+        goal={null}
+        streaming={streamingTurn}
+        sending
+        error={null}
+        draft={[] as never}
+        prefillKey={0}
+        onDraft={noop}
+        onSend={noop}
+        onFork={noop}
+        onForkSelection={noop}
+        onSelectThread={noop}
+        onSaveGoal={async () => {}}
+        controls={null}
+        mic={null}
+        dictationPhase={"idle" as never}
+        formulaMic={null}
+        onFormulaMic={noop}
+        onComposerError={noop}
+        onContinue={noop}
+        onToggleBookmark={noop}
+      />,
+    );
+    expect(screen.getByText("still writing")).toBeTruthy();
+    // Only the finished message has one; the streaming article has none.
+    expect(screen.getAllByRole("button", { name: "Bookmark this message" })).toHaveLength(1);
+    const streamingArticle = screen.getByText("still writing").closest("article");
+    expect(streamingArticle?.querySelector("button")).toBeNull();
+  });
+});
+
 describe("ChatPane jump to a search match", () => {
   it("scrolls to the matched message instead of the bottom", () => {
     render(pane({ messageId: "m3", nonce: 1 }));
