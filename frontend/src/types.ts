@@ -106,6 +106,16 @@ export type SearchResult = {
   snippet: string;
 };
 
+export type Bookmark = {
+  message_id: string;
+  thread_id: string;
+  thread_title: string;
+  is_side_node: boolean;
+  role: "user" | "assistant";
+  snippet: string;
+  created_at: string;
+};
+
 export type SearchChat = {
   conversation_id: string;
   conversation_name: string;

@@ -21,6 +21,7 @@ import { appendDictation, emptyDraft, isDraftEmpty, serializeDraft, textDraft, t
 import { DocumentsPanel } from "./DocumentsPanel";
 import { MicButton, type DictationPhase } from "./MicButton";
 import { ResizeHandle } from "./ResizeHandle";
+import { BookmarksPanel } from "./BookmarksPanel";
 import { SearchBox } from "./SearchBox";
 import { TreeView } from "./TreeView";
 import { loadCharts, saveCharts } from "./charts";
@@ -301,18 +302,22 @@ export function App() {
     await openConversation(id);
   }
 
-  async function openSearchResult(result: SearchResult) {
+  async function openMessage(targetConversationId: string, targetThreadId: string, messageId: string) {
     if (sending) return;
     setMenuOpen(false);
     setError(null);
     setDraft(emptyDraft());
     setStreaming(null);
     try {
-      await openConversation(result.conversation_id, result.thread_id);
-      setJump({ messageId: result.message_id, nonce: Date.now() });
+      await openConversation(targetConversationId, targetThreadId);
+      setJump({ messageId, nonce: Date.now() });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open that result");
     }
+  }
+
+  function openSearchResult(result: SearchResult) {
+    return openMessage(result.conversation_id, result.thread_id, result.message_id);
   }
 
   async function selectThread(id: string) {
@@ -521,6 +526,13 @@ export function App() {
           onTogglePin={(id, favorite) => void togglePin(id, favorite)}
         />
         <SearchBox disabled={sending} onOpenResult={(result) => void openSearchResult(result)} />
+        <BookmarksPanel
+          conversationId={conversationId}
+          disabled={sending}
+          onOpenBookmark={(b) => {
+            if (conversationId) void openMessage(conversationId, b.thread_id, b.message_id);
+          }}
+        />
         <button
           type="button"
           disabled={sending}
