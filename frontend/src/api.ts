@@ -63,6 +63,13 @@ export function setFavorite(id: string, favorite: boolean): Promise<Conversation
   });
 }
 
+export async function setBookmark(messageId: string, bookmarked: boolean): Promise<void> {
+  const response = await fetch(`/api/messages/${messageId}/bookmark`, {
+    method: bookmarked ? "PUT" : "DELETE",
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+}
+
 export function getTree(id: string): Promise<Tree> {
   return request(`/api/conversations/${id}/tree`);
 }

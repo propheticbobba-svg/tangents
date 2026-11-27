@@ -9,6 +9,7 @@ import {
   getTree,
   listConversations,
   listDocuments,
+  setBookmark,
   setFavorite,
   streamMessage,
   updateGoal,
@@ -143,6 +144,32 @@ export function App() {
         if (pinVersion.current === startedAt && !pinSaving.current) setConversations(list);
       })
       .catch(() => undefined);
+  }
+
+  function markBookmarked(messageId: string, bookmarked: boolean) {
+    setView((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.map((m) => (m.id === messageId ? { ...m, bookmarked } : m)),
+            forked_from:
+              current.forked_from && current.forked_from.id === messageId
+                ? { ...current.forked_from, bookmarked }
+                : current.forked_from,
+          }
+        : current,
+    );
+  }
+
+  async function toggleBookmark(messageId: string, bookmarked: boolean) {
+    setError(null);
+    markBookmarked(messageId, bookmarked);
+    try {
+      await setBookmark(messageId, bookmarked);
+    } catch {
+      markBookmarked(messageId, !bookmarked);
+      setError("Couldn't save that bookmark");
+    }
   }
 
   async function togglePin(id: string, favorite: boolean) {
@@ -617,6 +644,7 @@ export function App() {
               const content = serializeDraft(draft).trim();
               if (content) void send(threadId, content, draft);
             }}
+            onToggleBookmark={(messageId, next) => void toggleBookmark(messageId, next)}
             onFork={(messageId) => void forkFrom(messageId, "open")}
             onForkSelection={(messageId, text, mode) => void forkFrom(messageId, mode, text)}
             onSelectThread={(id) => void selectThread(id)}

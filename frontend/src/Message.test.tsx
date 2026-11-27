@@ -46,6 +46,57 @@ afterEach(() => {
   cleanup();
 });
 
+describe("MessageView bookmark button", () => {
+  it("shows a bookmark button on user, assistant and note messages without hover", () => {
+    for (const m of [
+      message("user"),
+      message("assistant"),
+      message("user", { is_note: true }),
+    ]) {
+      const { unmount } = render(
+        <MessageView message={m} onFork={vi.fn()} forkDisabled={false} onToggleBookmark={vi.fn()} />,
+      );
+      const button = screen.getByRole("button", { name: "Bookmark this message" });
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+      expect(button.className).not.toContain("hidden");
+      expect(button.className).toContain("min-h-11");
+      unmount();
+    }
+  });
+
+  it("shows the filled state with the remove label and reports the toggle", () => {
+    const toggle = vi.fn();
+    render(
+      <MessageView
+        message={message("assistant", { bookmarked: true })}
+        onFork={vi.fn()}
+        forkDisabled={false}
+        onToggleBookmark={toggle}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Remove bookmark" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button);
+    expect(toggle).toHaveBeenCalledWith("msg-1", false);
+  });
+
+  it("leaves the Fork button's own wrapper and sticky placement alone", () => {
+    render(
+      <MessageView
+        message={message("assistant")}
+        onFork={vi.fn()}
+        forkDisabled={false}
+        onToggleBookmark={vi.fn()}
+      />,
+    );
+    const fork = screen.getByRole("button", { name: "Fork" });
+    const bookmark = screen.getByRole("button", { name: "Bookmark this message" });
+    expect(fork.className).toContain("sticky");
+    expect(fork.parentElement?.contains(bookmark)).toBe(false);
+    expect(stickyContainingBlock(fork)).toBe(fork.closest("article"));
+  });
+});
+
 describe("MessageView fork button", () => {
   it("pins an assistant Fork button to the message article", () => {
     render(<MessageView message={message("assistant")} onFork={vi.fn()} forkDisabled={false} />);
